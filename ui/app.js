@@ -99,10 +99,9 @@ function render(data) {
   const cn = cy.$id(culprit);
   if (cn.nonempty()) { cn.select(); showDetails(cn); }
   const c = $("count");
-  c.style.display = "";
-  c.textContent = `${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}` +
-                  (data.truncated ? " · truncated" : "");
-  c.className = data.truncated ? "chip warn" : "chip";
+  c.innerHTML = `<b>${data.nodes.length}</b> node${data.nodes.length === 1 ? "" : "s"}` +
+                (data.truncated ? " · truncated" : "");
+  c.className = data.truncated ? "hstatus warn" : "hstatus";
 }
 
 // --- details panel ---
