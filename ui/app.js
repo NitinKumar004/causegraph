@@ -26,9 +26,9 @@ const cy = cytoscape({
         "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
         "transition-property": "opacity, border-color, underlay-opacity", "transition-duration": "130ms" } },
     { selector: 'node[kind="process"]', style: {
-        "background-gradient-stop-colors": "#3f7fd0 #3f7fd0 #14161b #14161b", "background-gradient-stop-positions": "0 7% 7% 100%" } },
+        "background-gradient-stop-colors": "#4a90d9 #4a90d9 #2b2e35 #2b2e35", "background-gradient-stop-positions": "0 13% 13% 100%" } },
     { selector: 'node[kind="file"]', style: {
-        "background-gradient-stop-colors": "#c79233 #c79233 #1a160f #1a160f", "background-gradient-stop-positions": "0 7% 7% 100%" } },
+        "background-gradient-stop-colors": "#d1962f #d1962f #302a22 #302a22", "background-gradient-stop-positions": "0 13% 13% 100%" } },
     { selector: "node.culprit", style: { "border-color": "#5aa0f2", "underlay-color": "#4c94ec", "underlay-opacity": 0.16, "underlay-padding": 8 } },
     { selector: "node:selected", style: { "border-color": "#8ab8f2", "underlay-color": "#8ab8f2", "underlay-opacity": 0.20, "underlay-padding": 8 } },
     // curved connectors with a small horizontal pill label
@@ -58,8 +58,8 @@ function render(data) {
   for (const e of data.edges) {
     const fw = e.rule === "file_watch";
     els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target,
-      elabel: fw ? (e.confidence != null ? e.confidence.toFixed(2) : "triggered") : "spawned",
-      col: fw ? "#c99539" : "#565a63", w: fw ? (e.confidence == null ? 1.6 : 1.3 + e.confidence * 2) : 1.6,
+      elabel: "", conf: fw ? e.confidence : null,  // clean coloured curves; confidence shown in the panel
+      col: fw ? "#d1962f" : "#9aa0aa", w: fw ? (e.confidence == null ? 1.6 : 1.3 + e.confidence * 1.8) : 1.8,
       style: fw ? "dashed" : "solid" } });
   }
   cy.elements().remove(); cy.add(els);
@@ -92,9 +92,11 @@ function showDetails(node) {
       <dl class="kv"><dt>peak RSS</dt><dd>${humanBytes(n.peak_rss_bytes)}</dd></dl>`;
   } else {
     $("p-title").textContent = base(n.path); $("p-sub").textContent = n.path || "";
+    const oe = node.outgoers("edge");
+    const conf = oe.nonempty() ? oe[0].data("conf") : null;
     $("p-body").innerHTML = `<span class="tag2">file</span>
-      <p class="hint" style="margin-top:11px">A change to this file likely triggered a process below
-      (a <code>file_watch</code> edge). Confidence is shown on the edge.</p>`;
+      <p class="hint" style="margin-top:11px">A change to this file likely triggered the connected process
+      (a <code>file_watch</code> edge)${conf != null ? ` — confidence <b style="color:var(--amber)">${conf.toFixed(2)}</b>` : ""}.</p>`;
   }
 }
 function clearDetails() {
