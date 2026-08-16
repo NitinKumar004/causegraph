@@ -75,7 +75,7 @@ def build(events: Iterable[Event], rules: Optional[list[EdgeRule]] = None) -> nx
             exe=n.exe, user=n.user, args=n.args, observed_spawn=n.observed_spawn,
         )
 
-    ctx = BuildContext(nodes=nodes, by_pid=by_pid)
+    ctx = BuildContext(events=evs, nodes=nodes, by_pid=by_pid)
     for rule in rules:
         for pe in rule.propose(ctx):
             if g.has_node(pe.parent) and g.has_node(pe.child):

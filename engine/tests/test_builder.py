@@ -92,3 +92,23 @@ def test_custom_rule_is_additive():
     assert g.number_of_edges() == 1
     (_, _, d), = list(g.edges(data=True))
     assert d["rule"] == "twin" and d["confidence"] == 0.5
+
+
+def test_rule_sees_raw_events_incl_metrics(graph_events):
+    """M4-shape: a rule that needs resource.sample metrics gets them from
+    ctx.events with NO builder change — the seam the milestone must prove. The
+    fixture's pid-100 sample has cpu_pct=55.0."""
+    seen_cpu = []
+
+    class ResourcePeekRule:
+        name = "resource-peek"
+
+        def propose(self, ctx):
+            for e in ctx.events:
+                if e.metrics is not None and e.metrics.cpu_pct is not None:
+                    seen_cpu.append((e.actor.pid, e.metrics.cpu_pct))
+            return []
+
+    builder.build(graph_events, rules=[ResourcePeekRule()])
+    assert (100, 55.0) in seen_cpu, f"metrics did not reach the rule: {seen_cpu}"
+    assert (1, 0.1) in seen_cpu

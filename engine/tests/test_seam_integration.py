@@ -66,3 +66,31 @@ def test_kill9_leaves_rowcount_within_cap(tmp_path):
     assert count <= max_rows, f"after kill -9, count={count} exceeds cap {max_rows}"
     # And it is still readable by the engine (not corrupt).
     assert count == len(list(reader.read_events(db)))
+
+
+def test_store_schema_parity_go_vs_python(tmp_path):
+    """The Go store DDL and the Python fixture DDL must agree on the events table
+    columns — the store schema has no codegen gate, so this catches cross-language
+    drift (e.g. a future additive column added on only one side)."""
+    from causegraph.schema import Event
+
+    go_db = str(tmp_path / "go.db")
+    subprocess.run([CGED, "-db", go_db, "-duration", "400ms", "-heartbeat", "100ms"],
+                   check=True, stderr=subprocess.DEVNULL, timeout=15)
+
+    py_db = str(tmp_path / "py.db")
+    conn = sqlite3.connect(py_db)
+    reader.write_events(conn, [Event.from_dict({
+        "id": "x", "ts": 1, "host_id": "h", "kind": "heartbeat",
+        "actor": {"pid": 1, "ppid": 0, "exe": "/x", "args": [], "user": "u"},
+        "source": "poll", "confidence": 1.0})])
+    conn.close()
+
+    def cols(db):
+        c = sqlite3.connect(db)
+        try:
+            return [(r[1], r[2]) for r in c.execute("PRAGMA table_info(events)")]
+        finally:
+            c.close()
+
+    assert cols(go_db) == cols(py_db), "events table schema drifted between Go and Python"
