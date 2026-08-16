@@ -1,10 +1,8 @@
 
-# --- ship-harness -----------------------------------------------------------
-# Everything the harness generates is disposable except the baselines, which are
-# the oracle every future run is compared against. Those are committed on purpose.
-.evidence/*
-!.evidence/baseline/
-!.evidence/baseline/**
+# --- ship-harness (local tooling, not part of the product) ------------------
+# Kept on disk for local use; not pushed.
+.evidence/
+ship.config.json
 
 # build + runtime artifacts
 /bin/

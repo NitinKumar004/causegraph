@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CauseGraph</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; }
+    header { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+             padding: .6rem .9rem; border-bottom: 1px solid #8884; }
+    header h1 { font-size: 1rem; margin: 0 .5rem 0 0; }
+    input { padding: .35rem .5rem; border: 1px solid #8886; border-radius: 6px; }
+    input#q { min-width: 16rem; }
+    button { padding: .35rem .8rem; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
+    #status { margin-left: auto; opacity: .8; }
+    #cy { position: absolute; top: 3.1rem; left: 0; right: 0; bottom: 0; }
+    .legend { font-size: .8rem; opacity: .75; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CauseGraph</h1>
+    <form id="f">
+      <input id="pid" type="text" inputmode="numeric" placeholder="pid, e.g. 900">
+      <span>or</span>
+      <input id="q" type="text" placeholder='question, e.g. "why is the fan loud?"'>
+      <button type="submit">Ask</button>
+    </form>
+    <span class="legend">■ process&nbsp;&nbsp;● file&nbsp;&nbsp;— thicker/greener edge = higher confidence</span>
+    <span id="status"></span>
+  </header>
+  <div id="cy"></div>
+  <script src="/vendor/cytoscape.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -94,6 +94,21 @@ def cmd_why(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ui(args: argparse.Namespace) -> int:
+    from causegraph.api import server
+
+    httpd = server.serve(args.db, host=args.host, port=args.port)
+    host, port = httpd.server_address
+    print(f"CauseGraph UI on http://{host}:{port}  (db={args.db}, Ctrl-C to stop)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.shutdown()
+    return 0
+
+
 def cmd_load(args: argparse.Namespace) -> int:
     events = []
     with open(args.jsonl, encoding="utf-8") as f:
@@ -132,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hide inferred causes below this confidence (default 0.5)")
     wy.add_argument("--all", action="store_true", help="show all causes, even low-confidence")
     wy.set_defaults(func=cmd_why)
+
+    ui = sub.add_parser("ui", help="serve a local read-only web UI for the causal graph")
+    ui.add_argument("--db", default="causegraph.db", help="events database path")
+    ui.add_argument("--host", default="127.0.0.1", help="bind host (loopback only by default)")
+    ui.add_argument("--port", type=int, default=8765, help="bind port (0 = ephemeral)")
+    ui.set_defaults(func=cmd_ui)
 
     lo = sub.add_parser("load", help="seed a database from an events JSONL file (dev helper)")
     lo.add_argument("jsonl")
