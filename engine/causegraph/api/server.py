@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -84,17 +83,11 @@ def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MA
             break
         selected.setdefault(_node_id(fkey), fkey)
 
-    dq = deque(sorted(v for v in g.successors(culprit)))
-    while dq:
+    for node in traverse.descendants_bfs(g, culprit):  # BFS walk owned by traverse.py
         if len(selected) >= max_nodes:
             truncated = True
             break
-        node = dq.popleft()
-        nid = _node_id(node)
-        if nid in selected:
-            continue
-        selected[nid] = node
-        dq.extend(sorted(g.successors(node)))
+        selected.setdefault(_node_id(node), node)
 
     ids = set(selected)
     nodes = [_node_json(g, k) for k in selected.values()]
@@ -151,7 +144,12 @@ def make_handler(db: str):
                     kw["min_confidence"] = float(qs["min_confidence"][0])
             except ValueError:
                 return self._json(400, {"error": "pid must be an integer, min_confidence a float"})
-            payload = graph_payload(db, **kw)
+            try:
+                payload = graph_payload(db, **kw)
+            except Exception:
+                # operational failure (e.g. an unreadable/corrupt db path fixed at
+                # startup) — return a clean JSON error, never a stack-trace 500.
+                return self._json(500, {"error": "could not read the events database"})
             status = 400 if "error" in payload else 200
             return self._json(status, payload)
 

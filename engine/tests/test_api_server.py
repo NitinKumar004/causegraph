@@ -50,6 +50,26 @@ def test_server_routes_bind_and_teardown(filewatch_db):
     assert not t.is_alive()  # clean teardown, no leaked thread
 
 
+def test_bad_db_returns_clean_json_error_not_traceback(tmp_path):
+    # db path is a directory -> reading it raises inside graph_payload; the handler
+    # must return a clean JSON 500, never a stack-trace.
+    bad = str(tmp_path)  # a directory, not a sqlite file
+    httpd = server.serve(bad, host="127.0.0.1", port=0)
+    _, port = httpd.server_address
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        try:
+            status, ctype, body = _get(port, "/api/graph?pid=1")
+        except urllib.error.HTTPError as e:
+            status, ctype, body = e.code, e.headers.get("Content-Type"), e.read()
+        assert status == 500 and ctype == "application/json"
+        assert "error" in json.loads(body)
+    finally:
+        httpd.shutdown()
+        t.join(timeout=2)
+
+
 def test_served_assets_have_no_external_network_refs():
     """The 'loads with no network' half of AC6, automatically checkable: no http(s)
     script/src references outside same-origin /vendor/."""

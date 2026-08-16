@@ -54,6 +54,23 @@ def ancestry_path(g: nx.DiGraph, key: NodeKey) -> list[NodeKey]:
     return chain
 
 
+def descendants_bfs(g: nx.DiGraph, key: NodeKey):
+    """Yield descendant process keys in BFS order (immediate children first),
+    excluding `key`. Follows spawn successors, deterministic (sorted). A generator
+    so a bounded caller can stop early without materializing the whole subtree."""
+    from collections import deque
+
+    seen = {key}
+    dq = deque(sorted(g.successors(key)))
+    while dq:
+        n = dq.popleft()
+        if n in seen:
+            continue
+        seen.add(n)
+        yield n
+        dq.extend(sorted(g.successors(n)))
+
+
 def subtree(g: nx.DiGraph, key: NodeKey) -> list[tuple[int, NodeKey]]:
     """(depth, key) pairs for key and all descendants, DFS, children sorted by
     (pid, spawn_ts) for deterministic output."""
