@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://causegraph.dev/schema/event.schema.json",
+  "title": "Event",
+  "description": "The single canonical event schema. Source of truth: Go structs and Python dataclasses are generated from this file (make gen). Nothing downstream branches on OS; it branches on `kind`.",
+  "x-schema-version": 1,
+  "type": "object",
+  "required": ["id", "ts", "host_id", "kind", "actor", "source", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "id":      { "type": "string",  "description": "unique event id (uuid)" },
+    "ts":      { "type": "integer", "description": "nanoseconds since epoch, monotonic where possible" },
+    "host_id": { "type": "string",  "description": "enables fleet mode later" },
+    "kind": {
+      "type": "string",
+      "description": "downstream branches on this, never on OS",
+      "enum": ["heartbeat", "process.spawn", "process.exit", "resource.sample"]
+    },
+    "actor": {
+      "type": "object",
+      "description": "the process this event is about",
+      "required": ["pid", "ppid", "exe", "args", "user"],
+      "additionalProperties": false,
+      "properties": {
+        "pid":  { "type": "integer" },
+        "ppid": { "type": "integer", "description": "parent pid — the first CERTAIN causal edge" },
+        "exe":  { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "user": { "type": "string" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "description": "optional: file path, socket 5-tuple, etc.",
+      "x-optional": true,
+      "additionalProperties": false,
+      "properties": {
+        "path":   { "type": "string", "x-optional": true },
+        "socket": { "type": "string", "x-optional": true }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "optional: for resource.sample events",
+      "x-optional": true,
+      "additionalProperties": false,
+      "properties": {
+        "cpu_pct":   { "type": "number",  "x-optional": true },
+        "rss_bytes": { "type": "integer", "x-optional": true },
+        "temp_c":    { "type": "number",  "x-optional": true }
+      }
+    },
+    "source": {
+      "type": "string",
+      "description": "provenance, useful for scoring; poll is the only M0-M2 source",
+      "enum": ["poll", "ebpf", "es", "etw"]
+    },
+    "confidence": { "type": "number", "description": "1.0 for observed facts; <1 reserved for inferred (M4)" }
+  }
+}

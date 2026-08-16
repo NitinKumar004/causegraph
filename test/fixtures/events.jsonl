@@ -1,0 +1,4 @@
+{"id":"e1","ts":1000,"host_id":"hostA","kind":"heartbeat","actor":{"pid":42,"ppid":1,"exe":"/usr/bin/cged","args":[],"user":"root"},"source":"poll","confidence":1.0}
+{"id":"e2","ts":2000,"host_id":"hostA","kind":"process.spawn","actor":{"pid":100,"ppid":42,"exe":"/bin/bash","args":["bash","-c","sleep 1"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"e3","ts":3000,"host_id":"hostA","kind":"process.exit","actor":{"pid":100,"ppid":42,"exe":"/bin/bash","args":["bash","-c","sleep 1"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"e4","ts":4000,"host_id":"hostA","kind":"resource.sample","actor":{"pid":100,"ppid":42,"exe":"/bin/bash","args":[],"user":"alice"},"metrics":{"cpu_pct":12.5,"rss_bytes":1048576},"source":"poll","confidence":1.0}
