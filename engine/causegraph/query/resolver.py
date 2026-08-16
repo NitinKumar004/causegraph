@@ -21,7 +21,9 @@ MAX_QUESTION_LEN = 4096
 _CPU_WORDS = {"fan", "hot", "heat", "loud", "cpu", "slow", "busy", "burning", "spinning", "warm"}
 _RSS_WORDS = {"memory", "mem", "ram", "leak", "leaking", "swap", "oom"}
 _TOKEN = re.compile(r"[a-z]+")
-_PID = re.compile(r"\b(\d+)\b")
+# Only an explicitly-signalled pid counts — a bare number ("more than 50% cpu")
+# must NOT be misread as a pid.
+_PID = re.compile(r"\b(?:pid|process|proc)\s*#?\s*(\d+)\b", re.IGNORECASE)
 
 
 @dataclass

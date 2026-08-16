@@ -33,7 +33,5 @@ def get_narrator(name: str | None = None) -> Narrator:
         return LocalTemplateNarrator()
     if name in _REGISTRY:
         return _REGISTRY[name]()
-    raise ValueError(
-        f"unknown narrator provider: {name!r} (known: local, "
-        + ", ".join(sorted(_REGISTRY)) + ")"
-    )
+    known = ", ".join(["local", *sorted(_REGISTRY)])
+    raise ValueError(f"unknown narrator provider: {name!r} (known: {known})")

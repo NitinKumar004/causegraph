@@ -43,3 +43,10 @@ def test_why_offvocab_fallback_has_caveat(why_db, capsys):
     out = capsys.readouterr().out
     assert "assuming a CPU/heat issue" in out
     assert "/usr/bin/ffmpeg (pid 200)" in out  # fell back to hottest CPU
+
+
+def test_why_bad_provider_exit1_no_traceback(why_db, capsys):
+    rc = main(["why", "why is the fan loud?", "--db", why_db, "--provider", "bogus"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "unknown narrator provider" in err and "bogus" in err

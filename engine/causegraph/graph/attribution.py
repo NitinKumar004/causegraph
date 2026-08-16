@@ -57,7 +57,7 @@ def _instance_for(g: nx.DiGraph, by_pid: dict, pid: int, ts: int) -> NodeKey | N
         if spawn_ts <= ts:
             le = k
             exit_ts = g.nodes[k]["exit_ts"]
-            if exit_ts is None or ts <= exit_ts:
+            if exit_ts is None or ts < exit_ts:  # [spawn_ts, exit_ts) — exit exclusive
                 in_window = k
     return in_window or le or keys[0]
 

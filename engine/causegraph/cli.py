@@ -1,11 +1,13 @@
 """cg — the CauseGraph CLI (architecture.md §5.5). M2 commands:
 
-    cg tree <pid> --db <path>   # the process and its descendants
-    cg path <pid> --db <path>   # root-ward ancestry path to <pid>
-    cg load <jsonl> --db <path> # dev helper: seed a DB from an events JSONL
+    cg tree <pid> --db <path>          # the process and its descendants
+    cg path <pid> --db <path>          # root-ward ancestry path to <pid>
+    cg why "<question>" --db <path>    # explain why a process is hot / using resources
+    cg load <jsonl> --db <path>        # dev helper: seed a DB from an events JSONL
 
-The reasoning is pure graph traversal (traverse.py); no model is involved. The
-natural-language `cg why "<question>"` is deferred to M5 and intentionally absent.
+The reasoning is pure graph traversal + attribution (traverse.py / attribution.py);
+no model is involved. `cg why` uses an offline deterministic narrator by default
+(query/narrator.py); a real LLM provider would slot in behind query/llm.py.
 """
 from __future__ import annotations
 
@@ -73,9 +75,13 @@ def cmd_why(args: argparse.Namespace) -> int:
         print(res.message, file=sys.stderr)
         return 1
 
+    try:
+        narrator = llm.get_narrator(args.provider)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
     path = [_summary(g, k) for k in traverse.ancestry_path(g, res.culprit)]
     culprit = _summary(g, res.culprit)
-    narrator = llm.get_narrator(args.provider)
     print(narrator.explain(path, culprit, res.metric, res.value, res.assumed))
     return 0
 

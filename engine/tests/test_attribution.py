@@ -63,3 +63,16 @@ def test_sample_attributed_to_correct_instance_on_pid_reuse():
     first, second = g.graph["by_pid"][5]  # sorted by spawn_ts: (5,10),(5,30)
     assert attribution.peak(g, first, CPU) == 40.0
     assert attribution.peak(g, second, CPU) == 90.0
+
+
+def test_exit_boundary_is_exclusive_no_misattribution():
+    # window is [spawn_ts, exit_ts) exclusive: an in-window sample (ts15) attributes
+    # to the instance; a sample AT exit_ts (ts20) does NOT (it lands on a separate
+    # instance), so the exited instance's peak stays 40, never 77.
+    events = [_spawn(9, 1, 10), _sample(9, 15, cpu=40.0), _exit(9, 1, 20), _sample(9, 20, cpu=77.0)]
+    g = builder.build(events)
+    attribution.annotate(g, events)
+    exited = g.graph["by_pid"][9][0]
+    assert exited == (9, 10)
+    assert attribution.peak(g, exited, CPU) == 40.0  # exclusive: ts=20 sample excluded
+    assert 77.0 not in [attribution.peak(g, exited, CPU)]

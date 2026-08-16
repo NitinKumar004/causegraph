@@ -49,6 +49,46 @@ def test_too_long_question_exit1(why_events):
     assert not r.ok and "too long" in r.message.lower()
 
 
+def test_exactly_4096_chars_accepted(why_events):
+    q = "fan " + "x" * (4096 - 4)  # exactly 4096 chars, contains a cpu keyword
+    assert len(q) == 4096
+    _, r = _resolved(why_events, q)
+    assert r.ok  # boundary is accepted (cap is strictly greater-than)
+
+
+def test_bare_number_is_not_a_pid(why_events):
+    # "more than 50% cpu" must NOT be read as pid 50; it resolves by keyword.
+    g, r = _resolved(why_events, "why is it using more than 50% cpu")
+    assert r.ok and g.nodes[r.culprit]["pid"] == 200  # hottest cpu, not pid 50
+    _, r2 = _resolved(why_events, "top 5 memory hogs")
+    assert r2.ok and r2.metric == RSS  # '5' ignored, keyword 'memory' wins
+
+
+def test_explicit_pid_with_no_attribution_exit1():
+    # pid resolves to a real node that has zero resource.samples -> exit 1, no None culprit.
+    from causegraph.schema import Event
+    ev = Event.from_dict({"id": "s", "ts": 1, "host_id": "h", "kind": "process.spawn",
+        "actor": {"pid": 7, "ppid": 1, "exe": "/x", "args": [], "user": "u"},
+        "source": "poll", "confidence": 1.0})
+    g = builder.build([ev])
+    attribution.annotate(g, [])  # no samples
+    r = resolver.resolve(g, "why is pid 7 slow")
+    assert not r.ok and "attribution" in r.message.lower() and "7" in r.message
+
+
+def test_empty_db_exit1():
+    g = builder.build([])
+    attribution.annotate(g, [])
+    r = resolver.resolve(g, "why is the fan loud")
+    assert not r.ok  # no processes at all
+
+
+def test_sql_injection_text_is_safe(why_events):
+    # A malicious-looking question is only tokenized in memory; no crash, safe fallback.
+    g, r = _resolved(why_events, "'; DROP TABLE events; -- cpu")
+    assert r.ok and r.metric == CPU  # 'cpu' keyword matched; no SQL executed
+
+
 def test_no_attribution_data_exit1():
     # graph with a process but zero resource.samples
     g = builder.build([__import__("causegraph.schema", fromlist=["Event"]).Event.from_dict({
