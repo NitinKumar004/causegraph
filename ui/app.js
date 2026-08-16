@@ -18,11 +18,11 @@ const cy = cytoscape({
   style: [
     // node-editor card: dark body with a thin coloured TOP accent bar
     { selector: "node", style: {
-        "label": "data(label)", "font-size": 10.5, "font-weight": 600, "line-height": 1.55,
-        "color": "#e4e6ea", "text-wrap": "wrap", "text-max-width": 160,
+        "label": "data(label)", "font-size": 11.5, "font-weight": 600,
+        "color": "#dfe1e6", "text-wrap": "wrap", "text-max-width": 150,
         "text-valign": "center", "text-halign": "center",
-        "width": "label", "height": "label", "min-width": 108, "padding": "16px", "shape": "round-rectangle",
-        "border-width": 1, "border-color": "rgba(255,255,255,.11)",
+        "width": "label", "height": "label", "min-width": 104, "padding": "12px", "shape": "round-rectangle",
+        "border-width": 1, "border-color": "#33373f",
         "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
         "transition-property": "opacity, border-color", "transition-duration": "130ms" } },
     // muted, near-monochrome: a barely-there desaturated header on a dark-grey body
@@ -30,15 +30,13 @@ const cy = cytoscape({
         "background-gradient-stop-colors": "#47505e #47505e #23262c #23262c", "background-gradient-stop-positions": "0 13% 13% 100%" } },
     { selector: 'node[kind="file"]', style: {
         "background-gradient-stop-colors": "#5f5644 #5f5644 #26231d #26231d", "background-gradient-stop-positions": "0 13% 13% 100%" } },
-    { selector: "node.culprit", style: { "border-width": 1.4, "border-color": "rgba(255,255,255,.32)" } },
-    { selector: "node:selected", style: { "border-width": 1.6, "border-color": "rgba(255,255,255,.55)" } },
-    // curved connectors with a small horizontal pill label
+    { selector: "node.culprit", style: { "border-width": 1.3, "border-color": "#59606c" } },
+    { selector: "node:selected", style: { "border-width": 1.5, "border-color": "#727a86" } },
+    // clean thin curves with small connection dots at both ends (no arrowheads)
     { selector: "edge", style: {
-        "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.8,
-        "width": "data(w)", "line-color": "data(col)", "target-arrow-color": "data(col)", "line-style": "data(style)", "opacity": 0.85,
-        "label": "data(elabel)", "font-size": 9, "font-weight": 600, "color": "#9aa0ab", "text-rotation": "none",
-        "text-background-color": "#181b21", "text-background-opacity": 1, "text-background-padding": 4, "text-background-shape": "round-rectangle",
-        "text-border-width": 1, "text-border-color": "rgba(255,255,255,.1)", "text-border-opacity": 1,
+        "curve-style": "bezier", "width": "data(w)", "line-color": "data(col)", "line-style": "data(style)", "opacity": 0.75,
+        "source-arrow-shape": "circle", "source-arrow-color": "data(col)",
+        "target-arrow-shape": "circle", "target-arrow-color": "data(col)", "arrow-scale": 0.42,
         "transition-property": "opacity", "transition-duration": "130ms" } },
     { selector: ".dim", style: { "opacity": 0.1 } },
     { selector: ".hl", style: { "opacity": 1 } },
@@ -52,8 +50,7 @@ function render(data) {
   const els = [];
   for (const n of data.nodes) {
     const title = base(n.kind === "process" ? n.exe : n.path);
-    els.push({ data: { id: n.id, kind: n.kind, meta: n,
-      label: n.kind === "process" ? `${title}\npid ${n.pid}` : title },
+    els.push({ data: { id: n.id, kind: n.kind, meta: n, label: title },
       classes: n.id === data.culprit ? "culprit" : "" });
   }
   for (const e of data.edges) {
