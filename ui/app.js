@@ -17,7 +17,7 @@ const cy = cytoscape({
   container: $("cy"), minZoom: 0.25, maxZoom: 1.6, wheelSensitivity: 0.22,
   style: [
     { selector: "node", style: {
-        "label": "data(label)", "font-size": 12.5, "font-weight": 550, "line-height": 1.3,
+        "label": "data(label)", "font-size": 12.5, "font-weight": 600, "line-height": 1.3,
         "color": "#eef0f3", "text-wrap": "wrap", "text-max-width": 150,
         "text-valign": "center", "text-halign": "center",
         "width": "label", "height": "label", "padding": "13px", "shape": "round-rectangle",
