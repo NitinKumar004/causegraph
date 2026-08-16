@@ -44,7 +44,11 @@ func (w *Watcher) Capabilities() collector.Caps {
 		FileEvents:    true,
 		SocketEvents:  false,
 		ResourceStats: false,
-		Fidelity:      collector.FidelityNative, // real-time kernel notifications
+		// Fidelity describes capture TIMING (real-time kernel notifications), NOT
+		// causal trust: fsnotify gives no process attribution, so scoring weights
+		// source "fsnotify" (0.9) below native (1.0). Do not equate Native fidelity
+		// with full provenance trust.
+		Fidelity: collector.FidelityNative,
 	}
 }
 

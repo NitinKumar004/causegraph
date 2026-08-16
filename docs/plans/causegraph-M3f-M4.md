@@ -134,8 +134,12 @@ e.g. `cg why "pid 900"` → "python3 started; possibly triggered by a change to 
 ## Rollback
 
 - How: additive — new daemon collector, new engine modules, enum value, new fixture. Revert commits.
-- Migration reversible: yes — `source=fsnotify` is an additive enum value; old DBs (schema_version 1)
-  still read; no column/table change. Verified by reading an M0–M2 DB with the new reader in a test.
+- Migration reversible: yes — `source=fsnotify`/`kind=file.change` are additive enum values; old DBs
+  (schema_version 1) still read; no column/table change. Verified by reading an M0–M2-only DB with the
+  new reader (`test_backward_compat_reads_m0m2_only_db`). Reverse direction (rollback with in-flight
+  data): a reverted M4-M5 engine has no file.change skip, so it ingests each pid-0 sentinel as an
+  inert orphan process node — harmless (never surfaced unless pid 0 is queried) and evicted with the
+  ring buffer. Acceptable, hence no schema_version bump.
 
 ## Open risks I'm accepting
 

@@ -31,7 +31,11 @@ class FileWatchRule:
         self.half_life_ns = half_life_ns
 
     def propose(self, ctx: BuildContext) -> list[ProposedEdge]:
-        # path -> sorted change timestamps, from the raw file.change events.
+        # path -> sorted change timestamps, from the raw file.change events. This
+        # re-derives per-path changes rather than reading the builder's FILE nodes;
+        # the two agree because both key through model.file_key. If the builder ever
+        # caps/dedups FILE nodes, switch this to read node attrs so edges can't point
+        # at paths the builder dropped (they'd be silently discarded by has_node).
         changes: dict[str, list[int]] = {}
         for e in ctx.events:
             if e.kind == KIND_FILE_CHANGE and e.target is not None and e.target.path is not None:
@@ -41,9 +45,11 @@ class FileWatchRule:
         if not changes:
             return []
 
-        # spawn/file provenance: the weaker end governs (ADR 0001). Valid while the
-        # only spawn producer is the poll backend; when a native spawn source lands,
-        # thread the spawn event's real source onto ProcessNode and use it here.
+        # spawn/file provenance: the weaker end governs (ADR 0001). Computed from
+        # constants — correct only while the sole spawn producer is `poll` and the
+        # sole file producer is `fsnotify`. When a native spawn OR native file source
+        # (es/etw) lands, thread each endpoint event's real `source` onto its node and
+        # pass min(file.source, spawn.source) per-edge instead of these constants.
         src = scoring.min_source(SOURCE_FSNOTIFY, SOURCE_POLL)
 
         edges: list[ProposedEdge] = []
