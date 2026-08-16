@@ -48,8 +48,10 @@ test-py:
 	@test -x $(PYTEST) || $(MAKE) venv
 	cd engine && PYTHONPATH=. $(PYTEST) -q
 
-## fixtures: build demo DBs from the committed fixtures
+## fixtures: build demo DBs from the committed fixtures (clean rebuild — cg load
+## appends, so stale DBs must be removed first to stay reproducible)
 fixtures: build
+	rm -f test/fixtures/graph.db test/fixtures/why.db test/fixtures/fw.db
 	./scripts/cg load test/fixtures/graph_events.jsonl --db test/fixtures/graph.db
 	./scripts/cg load test/fixtures/why_events.jsonl --db test/fixtures/why.db
 	./scripts/cg load test/fixtures/filewatch_events.jsonl --db test/fixtures/fw.db
