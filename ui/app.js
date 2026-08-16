@@ -31,9 +31,10 @@ const cy = cytoscape({
         "width": "label", "height": "label", "padding": "14px", "shape": "round-rectangle",
         "border-width": 1.6, "border-color": "data(border)",
         "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
-        "background-gradient-stop-colors": "data(g1) data(g2)",
         "transition-property": "opacity, border-width, underlay-opacity",
         "transition-duration": "140ms" } },
+    { selector: 'node[kind="process"]', style: { "background-gradient-stop-colors": "#212c3c #161f2b" } },
+    { selector: 'node[kind="file"]', style: { "background-gradient-stop-colors": "#332a18 #241d0f" } },
     { selector: "node.culprit", style: {
         "border-width": 2.6, "border-color": C.culprit, "font-size": 13.5,
         "underlay-color": C.blue, "underlay-opacity": 0.22, "underlay-padding": 12 } },
@@ -66,7 +67,6 @@ function nodeEls(n, culprit) {
       id: n.id, kind: n.kind, meta: n,
       label: isProc ? `${title}\npid ${n.pid}` : title,
       border: isProc ? heat(n.peak_cpu_pct) : C.amber,
-      g1: isProc ? "#212c3c" : "#332a18", g2: isProc ? "#161f2b" : "#241d0f",
     },
     classes: n.id === culprit ? "culprit" : "",
   };
