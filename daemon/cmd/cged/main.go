@@ -73,6 +73,7 @@ func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 		return err
 	}
 	col = pol
+	defer col.Close() // part of the Collector seam; native backends (M3) release OS handles here
 	logger.Printf("capture: generic poll backend, caps=%+v", col.Capabilities())
 
 	p := pipeline.New(cfg, sink, logger)
@@ -92,8 +93,11 @@ func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 		close(bridgeDone)
 	}()
 
-	// heartbeat: emitted by main (owns liveness), directly into the buffer.
-	go heartbeatLoop(ctx, cfg, p)
+	// heartbeat: emitted by main (owns liveness), directly into the buffer. We
+	// wait for it to stop BEFORE the final flush, otherwise a tick racing ctx
+	// cancellation could Ingest after the last drainAll and be lost.
+	heartbeatDone := make(chan struct{})
+	go func() { heartbeatLoop(ctx, cfg, p); close(heartbeatDone) }()
 
 	// collector: on return, close out so the bridge finishes.
 	go func() {
@@ -105,8 +109,9 @@ func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 
 	logger.Printf("cged running, writing to %s (Ctrl-C to stop)", cfg.DBPath)
 	<-ctx.Done()
-	<-bridgeDone // collector returned and every collected event is buffered
-	pcancel()    // trigger final flush
+	<-bridgeDone    // collector returned and every collected event is buffered
+	<-heartbeatDone // no more heartbeat Ingests can happen after this
+	pcancel()       // trigger the single final flush — nothing writes to the buffer now
 	<-pipeDone
 
 	logger.Printf("shutdown: dropped_overflow=%d dropped_write_error=%d",
