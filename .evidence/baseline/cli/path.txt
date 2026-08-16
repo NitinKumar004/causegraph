@@ -1,8 +1,0 @@
-### ./scripts/cg path 300 --db test/fixtures/graph.db
-exit: 0
---- stdout
-1 /sbin/init (root) ~
-  100 /bin/bash (alice)
-    201 /usr/bin/vim (alice)
-      300 /usr/bin/grep (alice)
---- stderr

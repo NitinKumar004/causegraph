@@ -1,8 +1,0 @@
-### ./scripts/cg why "what is using memory" --db test/fixtures/why.db
-exit: 0
---- stdout
-/usr/bin/chrome (pid 300) is the likely cause: peak memory 2.0 GiB.
-Started by (most recent first):
-  /usr/bin/python3 (pid 100)
-  /sbin/init (pid 1)
---- stderr

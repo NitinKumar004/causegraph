@@ -1,9 +1,0 @@
-### ./scripts/cg why "why is the fan loud?" --db test/fixtures/why.db
-exit: 0
---- stdout
-/usr/bin/ffmpeg (pid 200) is the likely cause: peak CPU 92.5%.
-Note: heat/fan is inferred from sustained CPU; no temperature sensor is available.
-Started by (most recent first):
-  /usr/bin/python3 (pid 100)
-  /sbin/init (pid 1)
---- stderr
