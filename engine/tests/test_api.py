@@ -83,3 +83,20 @@ def test_max_nodes_caps_file_causes(tmp_path):
     db = _db(tmp_path, events, "fanout.db")
     p = graph_payload(db, pid=900, max_nodes=8)
     assert len(p["nodes"]) <= 8 and p["truncated"] is True
+
+
+def test_deep_ancestry_core_capped(tmp_path):
+    # a long spawn chain 1->2->...->30; culprit=30, max_nodes=5 -> core itself
+    # exceeds the cap, so it is truncated to <= max_nodes with truncated=True.
+    events = [_spawn(i, i - 1, i * 10) for i in range(1, 31)]
+    db = _db(tmp_path, events, "deep.db")
+    p = graph_payload(db, pid=30, max_nodes=5)
+    assert len(p["nodes"]) <= 5 and p["truncated"] is True
+
+
+def test_unresolvable_question_errors(why_db):
+    # a non-empty question with no resolvable target still returns an error, never raises
+    empty_q = graph_payload(why_db, q="")  # empty after strip
+    assert "error" in empty_q
+    # a question about an absent explicit pid
+    assert "error" in graph_payload(why_db, q="why is pid 424242 slow")

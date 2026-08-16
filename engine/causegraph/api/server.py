@@ -65,11 +65,15 @@ def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MA
             return {"error": res.message}
         culprit = res.culprit
 
-    # Mandatory core: culprit + its root-ward ancestry (a single bounded path).
-    selected: dict[str, object] = {}
-    for k in traverse.ancestry_path(g, culprit):
-        selected[_node_id(k)] = k
+    # Core: culprit + its root-ward ancestry. Normally a short chain, but guard the
+    # pathological deep-nesting case so the payload never exceeds max_nodes with
+    # truncated=false — keep the ancestors closest to the culprit.
     truncated = False
+    anc = traverse.ancestry_path(g, culprit)  # [root, ..., culprit]
+    if len(anc) > max_nodes:
+        anc = anc[-max_nodes:]
+        truncated = True
+    selected: dict[str, object] = {_node_id(k): k for k in anc}
 
     # Fill the remaining budget: file causes (most-confident-first), then
     # descendants (BFS), stopping at max_nodes.
@@ -159,5 +163,6 @@ def make_handler(db: str):
 def serve(db: str, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """Create (and return, not-yet-serving) a ThreadingHTTPServer bound to host.
     Caller runs serve_forever(); tests can start it in a thread and shut it down.
-    host defaults to loopback so the tool never listens on all interfaces."""
+    host DEFAULTS to loopback (127.0.0.1); a caller passing --host can override it,
+    so this is a safe default, not an enforced invariant."""
     return ThreadingHTTPServer((host, port), make_handler(db))

@@ -68,7 +68,8 @@ differently, edges labelled/coloured by rule and confidence — rendered with cy
 6. The page (`ui/index.html` + `app.js` + vendored cytoscape) loads with no network: a search box
    queries `/api/graph`; process vs file nodes are visually distinct; each edge shows its rule and
    confidence. (Visual correctness verified manually — stated, not faked.)
-7. `cg ui --db <path> [--host 127.0.0.1] [--port 0]` launches the server and prints the bound URL.
+7. `cg ui --db <path> [--host 127.0.0.1] [--port 8765]` (port default 8765; `--port 0` = ephemeral)
+   launches the server and prints the bound URL.
 8. All prior behavior unchanged; `make test` green including the new API tests.
 
 ## Test plan

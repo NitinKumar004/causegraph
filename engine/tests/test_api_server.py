@@ -41,7 +41,8 @@ def test_server_routes_bind_and_teardown(filewatch_db):
         assert data["culprit"] == "p:900:2000"
         # error paths -> 4xx, never 500
         assert _get_status(port, "/api/graph") == 400          # neither pid nor q
-        assert _get_status(port, "/api/graph?pid=abc") == 400   # non-int
+        assert _get_status(port, "/api/graph?pid=abc") == 400   # non-int pid
+        assert _get_status(port, "/api/graph?pid=900&min_confidence=hot") == 400  # bad float
         assert _get_status(port, "/nope") == 404                # unknown path
     finally:
         httpd.shutdown()
