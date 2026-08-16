@@ -10,15 +10,11 @@ from __future__ import annotations
 
 import networkx as nx
 
-from causegraph.graph.model import NodeKey, is_process_key
+from causegraph.graph.model import NodeKey, process_keys as _process_keys
 from causegraph.metrics import CPU, RSS  # re-exported: attribution.CPU/RSS stay valid
 from causegraph.schema import Event, KIND_RESOURCE_SAMPLE
 
 _PEAK_ATTR = {CPU: "peak_cpu_pct", RSS: "peak_rss_bytes"}
-
-
-def _process_keys(g: nx.DiGraph) -> list[NodeKey]:
-    return [k for k in g.nodes() if is_process_key(k)]
 
 
 def annotate(g: nx.DiGraph, events: list[Event]) -> None:

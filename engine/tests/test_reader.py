@@ -22,3 +22,15 @@ def test_reader_only_reads_data_column(tmp_path, graph_events):
     reader.write_events(conn, graph_events)
     conn.close()
     assert len(list(reader.read_events(db))) == len(graph_events)
+
+
+def test_backward_compat_reads_m0m2_only_db(tmp_path, graph_events):
+    """Rollback claim: a DB containing ONLY M0-M2 kinds/sources (no file.change,
+    no fsnotify) reads unchanged with the current reader — additive enum evolution."""
+    db = str(tmp_path / "legacy.db")
+    conn = sqlite3.connect(db)
+    reader.write_events(conn, graph_events)  # graph_events are all M0-M2 shapes
+    conn.close()
+    got = list(reader.read_events(db))
+    assert [e.kind for e in got] == [e.kind for e in graph_events]
+    assert all(e.source == "poll" for e in got)  # no fsnotify in legacy data

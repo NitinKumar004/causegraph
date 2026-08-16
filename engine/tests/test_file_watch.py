@@ -63,6 +63,15 @@ def test_relative_arg_not_matched():
     assert g.number_of_edges() == 0
 
 
+def test_non_canonical_path_still_matches():
+    # file.change carries a non-normalized path; the process references the clean
+    # form. file_key normalizes both, so the node key matches and the edge survives.
+    events = [_fc("/etc//app.conf", 1000), _spawn(900, 1, 2000, args=["/etc/app.conf"])]
+    g = builder.build(events)
+    assert g.has_node(file_key("/etc/app.conf"))
+    assert g.has_edge(file_key("/etc/app.conf"), (900, 2000))
+
+
 def test_parent_of_ignores_file_edge_and_causes_returns_it(filewatch_events):
     g = builder.build(filewatch_events)
     proc = g.graph["by_pid"][900][0]

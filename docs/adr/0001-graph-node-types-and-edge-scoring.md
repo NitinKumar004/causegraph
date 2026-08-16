@@ -19,10 +19,13 @@ M3f-M4 introduces the first non-process node (FILE) and the first inferred (<1.0
      node construction across rules (which would desync edges from nodes).
 
 2. **Node keys have one owner each.** `model.ProcessNode.key = (pid, spawn_ts)` (existing);
-   `model.file_key(path) = ("file", path)` (new) is used by BOTH the builder and `file_watch`, so the
-   tuple format has a single definition. `model.is_process_key(k)` / a `process_keys(g)` helper is the
-   single guard that `attribution.rank_by` and `traverse.parent_of` route through, so the
-   heterogeneous-key (`(int,int)` vs `(str,str)`) comparison is never re-armed by a future consumer.
+   `model.file_key(path) = ("file", normpath(path))` (new) — normalized inside `file_key` — is used by
+   BOTH the builder and `file_watch`, so the same path in any string form yields one key.
+   `model.process_keys(g)` / `is_process_key(k)` is the single owner of the key-type guard that
+   `attribution` routes through, so the heterogeneous-key (`(int,int)` vs `(str,str)`) comparison is
+   never re-armed. `traverse.parent_of` uses the stronger *semantic* guard `rule=="spawn"` (a
+   file_watch predecessor is never lineage, independent of key type) — both prevent a FILE key from
+   entering the ancestry chain.
 
 3. **Edge confidence = base × provenance × temporal tightness, provenance = min of the edge's two
    endpoints.** A `file_watch` edge spans an fsnotify file.change and a poll-observed spawn; its

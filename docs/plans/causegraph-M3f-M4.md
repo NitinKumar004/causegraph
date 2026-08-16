@@ -54,9 +54,10 @@ e.g. `cg why "pid 900"` → "python3 started; possibly triggered by a change to 
 
 ## Acceptance criteria
 
-1. `filewatch.Watcher` implements `collector.Collector`; `-watch <dir>` (repeatable, recursive add
-   at start) emits `file.change` events (source=`fsnotify`, `target.path` set, actor=UNKNOWN
-   sentinel pid 0); `Caps.FileEvents=true`. A nonexistent `-watch` dir logs and is skipped, no crash.
+1. `filewatch.Watcher` implements `collector.Collector`; `-watch <dir1,dir2>` (comma-separated,
+   recursive add at start) emits `file.change` events (source=`fsnotify`, `target.path` set,
+   actor=UNKNOWN sentinel pid 0); `Caps.FileEvents=true`. A nonexistent `-watch` dir logs and is
+   skipped, no crash.
 2. Schema `kind` enum gains `file.change` AND `source` enum gains `fsnotify`
    (`shared/schema/event.schema.json`); `make gen` regenerates both files; drift gate passes;
    existing events still validate; codec round-trips a `file.change` event. `event.go` `Validate()`
@@ -70,10 +71,11 @@ e.g. `cg why "pid 900"` → "python3 started; possibly triggered by a change to 
    per distinct path via `model.file_key(path)` (key `("file", path)`), `kind="file"`, sorted
    change-ts list. Process nodes get an explicit `kind="process"` attr; otherwise unchanged. Edge
    rules propose edges only (no node creation), so the §6 rule seam is intact.
-4b. `attribution.annotate`/`rank_by` and `traverse.parent_of` route through a single
-   `model.is_process_key`/`process_keys(g)` helper (the one owner of the key-type guard), so FILE
-   keys `(str,str)` never enter comparisons against process keys `(int,int)` (TypeError). A golden
-   test runs `cg why` against a DB containing file.change events.
+4b. `attribution.annotate`/`rank_by` route through the single `model.process_keys(g)`/
+   `is_process_key` helper (the one owner of the key-type guard) so FILE keys `(str,str)` never enter
+   comparisons against process keys `(int,int)` (TypeError). `traverse.parent_of` uses the stronger
+   SEMANTIC guard `rule=="spawn"` (a file_watch predecessor is not lineage regardless of key type).
+   A golden test runs `cg why` against a DB containing file.change events.
 5. `scoring.combine(base, provenance_source, dt, half_life) -> float` in [0,1], monotonic (↑base,
    native≥fsnotify≥poll provenance, smaller dt → higher). For an edge spanning two events the caller
    passes `provenance = min(file.source, spawn.source)` (an edge is only as trustworthy as its weaker
@@ -111,7 +113,7 @@ e.g. `cg why "pid 900"` → "python3 started; possibly triggered by a change to 
 | Dimension | Proven by | Gate |
 |---|---|---|
 | correctness | table tests: scoring monotonic+clamp+spawn-not-rescored; file_watch (path-in-args + within-window + dt→confidence + no-match); builder file nodes + no process node from file.change; traverse.causes min_confidence filter; narrator causes golden; codec round-trips file.change | must pass |
-| reliability | watcher on a nonexistent dir → logged, skipped, no crash; fsnotify Errors channel drained; SIGINT stops both collectors and flushes | must pass |
+| reliability | watcher on a nonexistent dir → logged, skipped, no crash (tested); SIGINT stops both collectors and flushes (tested); fsnotify Errors channel is drained in the select loop (log-and-continue) — inspection-verified, since runtime fsnotify errors can't be injected deterministically in-process | must pass |
 | concurrency | `go test -race`: poller + filewatch both feeding one `out` channel + pipeline drain | must pass |
 | scale | file_watch is O(spawns × referenced-paths); measure added cost at N file nodes / M spawns via a bench, report p50/p95/p99 | report |
 | security | `-watch` only watches user-given dirs; `target.path` stored via parameterized SQL; non-UTF8/oversized path rejected by codec; question tokenized only | must pass |

@@ -6,10 +6,11 @@ child never attaches to the wrong parent.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-# A process node key is (pid, spawn_ts); a file node key is ("file", path).
+# A process node key is (pid, spawn_ts); a file node key is ("file", normpath).
 # Both flow through the same graph, so key format + the type guard have ONE owner
 # here (ADR 0001).
 NodeKey = tuple
@@ -18,15 +19,22 @@ FILE_TAG = "file"
 
 
 def file_key(path: str) -> tuple[str, str]:
-    """The sole constructor of a FILE node key — used by both builder and file_watch."""
-    return (FILE_TAG, path)
+    """The sole constructor of a FILE node key — used by both builder and file_watch.
+    Normalizes the path here so callers feeding different string forms of the same
+    path (raw vs normalized) always produce the identical key (ADR 0001)."""
+    return (FILE_TAG, os.path.normpath(path))
 
 
 def is_process_key(key) -> bool:
     """True for process keys (pid, spawn_ts); False for file keys ("file", path).
-    The single guard that attribution/traverse route through so a (str,str) key
-    never enters a comparison against an (int,int) key."""
+    The single guard that attribution routes through so a (str,str) key never enters
+    a comparison against an (int,int) key."""
     return isinstance(key[0], int)
+
+
+def process_keys(g) -> list:
+    """All process node keys in g — the single owner of this filter (ADR 0001)."""
+    return [k for k in g.nodes() if is_process_key(k)]
 
 
 @dataclass

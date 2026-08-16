@@ -85,12 +85,14 @@ def build(events: Iterable[Event], rules: Optional[list[EdgeRule]] = None) -> nx
         )
 
     # FILE nodes: one per distinct path (builder owns kind->node — ADR 0001).
-    file_changes: dict[str, list[int]] = {}
+    # Group by the normalized key so raw/non-canonical paths collapse to one node
+    # and match the key file_watch builds for its edges.
+    file_changes: dict[tuple, list[int]] = {}
     for e in evs:
         if e.kind == KIND_FILE_CHANGE and e.target is not None and e.target.path is not None:
-            file_changes.setdefault(e.target.path, []).append(e.ts)
-    for path, tss in file_changes.items():
-        g.add_node(file_key(path), kind="file", path=path, changes=sorted(tss))
+            file_changes.setdefault(file_key(e.target.path), []).append(e.ts)
+    for key, tss in file_changes.items():
+        g.add_node(key, kind="file", path=key[1], changes=sorted(tss))
 
     ctx = BuildContext(events=evs, nodes=nodes, by_pid=by_pid)
     for rule in rules:

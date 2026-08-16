@@ -41,7 +41,9 @@ class FileWatchRule:
         if not changes:
             return []
 
-        # spawn/file provenance: the weaker end (poll spawn) governs (ADR 0001).
+        # spawn/file provenance: the weaker end governs (ADR 0001). Valid while the
+        # only spawn producer is the poll backend; when a native spawn source lands,
+        # thread the spawn event's real source onto ProcessNode and use it here.
         src = scoring.min_source(SOURCE_FSNOTIFY, SOURCE_POLL)
 
         edges: list[ProposedEdge] = []

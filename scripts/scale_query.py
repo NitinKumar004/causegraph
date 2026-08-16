@@ -107,6 +107,47 @@ def measure_retention(max_rows: int, live_pids: int, sample_hz: float) -> dict:
     }
 
 
+def measure_file_watch(spawns: int, trials: int = 20) -> dict:
+    """file_watch cost: O(spawns × referenced-paths). Build a graph of `spawns`
+    processes each referencing one file that changed just before it, then time the
+    FileWatchRule.propose pass over the built graph."""
+    from causegraph.graph.edges.base import BuildContext
+    from causegraph.graph.edges.file_watch import FileWatchRule
+    from causegraph.graph.model import ProcessNode
+    from causegraph.schema import Event
+
+    events = []
+    for i in range(1, spawns + 1):
+        path = f"/etc/app{i}.conf"
+        events.append(Event.from_dict({"id": f"fc{i}", "ts": i * 10, "host_id": "b",
+            "kind": "file.change", "actor": {"pid": 0, "ppid": 0, "exe": "", "args": [], "user": ""},
+            "target": {"path": path}, "source": "fsnotify", "confidence": 1.0}))
+        events.append(Event.from_dict({"id": f"s{i}", "ts": i * 10 + 1, "host_id": "b",
+            "kind": "process.spawn",
+            "actor": {"pid": i, "ppid": 1, "exe": "/bin/x", "args": [path], "user": "u"},
+            "source": "poll", "confidence": 1.0}))
+
+    g = builder.build(events)
+    from causegraph.graph.model import process_keys
+    nodes = [ProcessNode(pid=g.nodes[k]["pid"], ppid=g.nodes[k]["ppid"], spawn_ts=g.nodes[k]["spawn_ts"],
+                         exe=g.nodes[k]["exe"], args=g.nodes[k]["args"], user=g.nodes[k]["user"])
+             for k in process_keys(g)]
+    ctx = BuildContext(events=events, nodes=nodes, by_pid={})
+    rule = FileWatchRule()
+    times = []
+    for _ in range(trials):
+        t = time.perf_counter()
+        edges = rule.propose(ctx)
+        times.append(time.perf_counter() - t)
+    return {
+        "spawns": spawns,
+        "file_nodes": spawns,
+        "edges_proposed": len(edges),
+        "propose_added_seconds": _percentiles(times),
+        "trials": trials,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rows", type=int, default=1_000_000)
@@ -118,6 +159,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         db = os.path.join(td, "scale.db")
         query = measure_query(args.rows, db)
+    file_watch = measure_file_watch(min(args.rows, 100_000))
 
     max_rows = 1_000_000
     retention = {
@@ -127,7 +169,7 @@ def main() -> int:
         "so live_pids is the sampled subset, not the full process list",
     }
 
-    out = {"scale_query": query, "scale_retention": retention}
+    out = {"scale_query": query, "scale_retention": retention, "scale_file_watch": file_watch}
     text = json.dumps(out, indent=2)
     print(text)
     if args.json:
