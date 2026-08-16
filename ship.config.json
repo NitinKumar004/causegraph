@@ -45,7 +45,15 @@
         "cases": [
           {
             "name": "help",
-            "cmd": "./bin/app --help"
+            "cmd": "./scripts/cg --help"
+          },
+          {
+            "name": "tree",
+            "cmd": "./scripts/cg tree 100 --db test/fixtures/graph.db"
+          },
+          {
+            "name": "path",
+            "cmd": "./scripts/cg path 300 --db test/fixtures/graph.db"
           }
         ],
         "redact": [

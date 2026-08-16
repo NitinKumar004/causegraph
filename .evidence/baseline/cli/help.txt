@@ -1,0 +1,16 @@
+### ./scripts/cg --help
+exit: 0
+--- stdout
+usage: cg [-h] {tree,path,load} ...
+
+CauseGraph — trace why a process exists.
+
+positional arguments:
+  {tree,path,load}
+    tree            print a process and its descendants
+    path            print the root-ward ancestry path to a process
+    load            seed a database from an events JSONL file (dev helper)
+
+options:
+  -h, --help        show this help message and exit
+--- stderr

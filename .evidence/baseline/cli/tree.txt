@@ -1,0 +1,9 @@
+### ./scripts/cg tree 100 --db test/fixtures/graph.db
+exit: 0
+--- stdout
+100 /bin/bash (alice)
+  200 /bin/sleep (alice)
+  200 /bin/sleep (alice) ~
+  201 /usr/bin/vim (alice)
+    300 /usr/bin/grep (alice)
+--- stderr
