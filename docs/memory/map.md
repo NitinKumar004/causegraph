@@ -16,6 +16,9 @@ may live only here.
 - EdgeRule plugin seam (the extensibility heart) → `engine/causegraph/graph/edges/base.py` (`BuildContext` carries raw events = the doc's EventWindow) + `edges/spawn.py` (ppid, conf 1.0). M4 rules add files here. confidence: high
 - CLI `cg tree|path|load` → `engine/causegraph/cli.py`; wrapper `scripts/cg`. `cg why` is reserved for M5, deliberately absent. confidence: high
 - Scale harness → `daemon/cmd/scalebench/main.go` (write path) + `scripts/scale_query.py` (DAG build/traverse/RSS/retention); `make scale`. confidence: high
-- Build/test entrypoint → `Makefile` (`make test` = check-gen + go race + pytest incl. seam integration). confidence: high
+- Resource attribution (M4) → `engine/causegraph/graph/attribution.py`: `annotate(g, events)` matches resource.samples to node instances by `[spawn_ts,exit_ts)` window; `rank_by(g, metric)` None-safe. Metric keys in `engine/causegraph/metrics.py` (CPU/RSS). confidence: high
+- Query layer (M5-offline) → `engine/causegraph/query/`: `resolver.py` (keyword intent → hottest node; only `pid N`/`process N` is an explicit pid), `narrator.py` `LocalTemplateNarrator` (deterministic templated explanation), `llm.py` (Narrator Protocol + registry; offline default, no provider). `cg why "<q>"` in `cli.py`. Reasoning stays in graph; narrator/llm phrase only. confidence: high
+- Build/test entrypoint → `Makefile` (`make test` = check-gen + go race + pytest incl. seam integration; `make scale` → `.evidence/artifacts`). confidence: high
+- DEFERRED to M4-full (needs M3 file/socket data): `scoring.py`, inferred <1.0 edges, min-confidence traversal. Not built — no <1.0-edge producer exists yet. See `docs/plans/causegraph-M4-M5.md`.
 
 STALE-RISK: binding scale limit — engine rebuilds the whole networkx DAG per query (1M rows ≈ 7.6s / 2.3 GiB, measured 2026-08-16 `.evidence/artifacts/scale_query.json`). Fine for M2 scope (hours on one machine); revisit (caching/incremental build) before large windows or fleet.

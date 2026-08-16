@@ -13,3 +13,8 @@ When shipping an M-scoped slice of a larger system, prove each named seam with a
 Every acceptance criterion, including the daemon entrypoint, gets a test; extract main() into a testable run(ctx,cfg) so the full lifecycle (heartbeat, clean SIGINT shutdown) is covered. — causegraph-M0-M2
 Cross-language artifacts (event schema AND the store table DDL) each need a drift gate on both the Go and Python sides. — causegraph-M0-M2
 Generated code is committed and gofmt'd by the generator; the drift gate is `gen.py --check` (in-memory byte compare). — causegraph-M0-M2
+
+Do not build a confidence scorer/precision filter until a rule actually emits a <1.0 edge; with one certain edge type there is nothing to score — defer, don't ship dead code. — causegraph-M4-M5
+Keep the LLM/narrator a translator only: resolver picks the entry node, traversal reasons, narrator/llm phrase; the narrator emits ALL user-facing text (incl. caveats), the resolver prints none. — causegraph-M4-M5
+Only treat 'pid N'/'process N' as an explicit pid in a free-text question; a bare number is not a pid. — causegraph-M4-M5
+A `cg why` (or any query) fixture is separate from the tree/path fixture so adding resource.samples can't shift the ancestry goldens. — causegraph-M4-M5
