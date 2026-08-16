@@ -3,14 +3,8 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-
-// palette (validated data-viz palette, dark)
-const C = {
-  blue: "#3f8ae8", amber: "#e0a133", spawn: "#6a7180",
-  good: "#2fa34a", warn: "#f0a83c", hot: "#e5544f",
-  ink: "#f5f5f4", muted: "#83837c", culprit: "#cfe0ff",
-};
-const heat = (cpu) => cpu == null ? C.blue : cpu < 15 ? C.good : cpu < 50 ? C.warn : C.hot;
+const C = { blue: "#4c94ec", amber: "#d9a441", good: "#4ba869", warn: "#e0a83c", hot: "#e0625d", muted: "#6f727a" };
+const heat = (cpu) => cpu == null ? C.muted : cpu < 15 ? C.good : cpu < 50 ? C.warn : C.hot;
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "?";
 function humanBytes(n) {
   if (n == null) return "—";
@@ -20,109 +14,79 @@ function humanBytes(n) {
 }
 
 const cy = cytoscape({
-  container: $("cy"),
-  minZoom: 0.2, maxZoom: 1.6, wheelSensitivity: 0.22,
+  container: $("cy"), minZoom: 0.25, maxZoom: 1.6, wheelSensitivity: 0.22,
   style: [
     { selector: "node", style: {
-        "label": "data(label)", "font-size": 12.5, "font-weight": 600, "line-height": 1.25,
-        "color": C.ink, "text-wrap": "wrap", "text-max-width": 150,
+        "label": "data(label)", "font-size": 12.5, "font-weight": 550, "line-height": 1.3,
+        "color": "#eef0f3", "text-wrap": "wrap", "text-max-width": 150,
         "text-valign": "center", "text-halign": "center",
-        "text-outline-width": 2.4, "text-outline-color": "#0d0f13", "text-outline-opacity": 0.9,
-        "width": "label", "height": "label", "padding": "14px", "shape": "round-rectangle",
-        "border-width": 1.6, "border-color": "data(border)",
-        "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
-        "transition-property": "opacity, border-width, underlay-opacity",
-        "transition-duration": "140ms" } },
-    { selector: 'node[kind="process"]', style: { "background-gradient-stop-colors": "#212c3c #161f2b" } },
-    { selector: 'node[kind="file"]', style: { "background-gradient-stop-colors": "#332a18 #241d0f" } },
+        "width": "label", "height": "label", "padding": "13px", "shape": "round-rectangle",
+        "border-width": 1, "border-color": "rgba(255,255,255,.11)", "background-color": "#181b22",
+        "transition-property": "opacity, border-color, underlay-opacity", "transition-duration": "130ms" } },
+    { selector: 'node[kind="file"]', style: { "background-color": "#201b12", "border-color": "rgba(217,164,65,.4)" } },
     { selector: "node.culprit", style: {
-        "border-width": 2.6, "border-color": C.culprit, "font-size": 13.5,
-        "underlay-color": C.blue, "underlay-opacity": 0.22, "underlay-padding": 12 } },
+        "border-width": 1.6, "border-color": C.blue, "underlay-color": C.blue, "underlay-opacity": 0.14, "underlay-padding": 9 } },
     { selector: "node:selected", style: {
-        "border-width": 2.8, "border-color": "#eaf1ff",
-        "underlay-color": "#7fb0f5", "underlay-opacity": 0.28, "underlay-padding": 12 } },
+        "border-width": 1.6, "border-color": "#8ab8f2", "underlay-color": "#8ab8f2", "underlay-opacity": 0.18, "underlay-padding": 9 } },
     { selector: "edge", style: {
-        "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 1.05,
-        "width": "data(w)", "line-color": "data(col)", "target-arrow-color": "data(col)",
-        "line-style": "data(style)", "opacity": 0.92,
-        "label": "data(elabel)", "font-size": 10, "font-weight": 600, "color": "#d8d7cf",
-        "text-rotation": "autorotate", "text-background-color": "#111318",
-        "text-background-opacity": 0.9, "text-background-padding": 3, "text-background-shape": "round-rectangle",
-        "transition-property": "opacity", "transition-duration": "140ms" } },
-    { selector: ".dim", style: { "opacity": 0.12 } },
+        "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.85,
+        "width": "data(w)", "line-color": "data(col)", "target-arrow-color": "data(col)", "line-style": "data(style)", "opacity": 0.8,
+        "label": "data(elabel)", "font-size": 9.5, "color": C.muted, "text-rotation": "autorotate",
+        "text-background-color": "#0c0d10", "text-background-opacity": 0.9, "text-background-padding": 2,
+        "transition-property": "opacity", "transition-duration": "130ms" } },
+    { selector: ".dim", style: { "opacity": 0.1 } },
     { selector: ".hl", style: { "opacity": 1 } },
   ],
 });
 
-function overlay(which) {
-  for (const id of ["empty", "loading", "error"]) $(id).classList.toggle("show", id === which);
-}
+function overlay(which) { for (const id of ["empty", "loading", "error"]) $(id).classList.toggle("show", id === which); }
 function setError(msg) { $("error-msg").textContent = msg; overlay("error"); }
-
-function nodeEls(n, culprit) {
-  const isProc = n.kind === "process";
-  const title = base(isProc ? n.exe : n.path);
-  return {
-    data: {
-      id: n.id, kind: n.kind, meta: n,
-      label: isProc ? `${title}\npid ${n.pid}` : title,
-      border: isProc ? heat(n.peak_cpu_pct) : C.amber,
-    },
-    classes: n.id === culprit ? "culprit" : "",
-  };
-}
 
 function render(data) {
   const els = [];
-  for (const n of data.nodes) els.push(nodeEls(n, data.culprit));
+  for (const n of data.nodes) {
+    const title = base(n.kind === "process" ? n.exe : n.path);
+    els.push({ data: { id: n.id, kind: n.kind, meta: n,
+      label: n.kind === "process" ? `${title}\npid ${n.pid}` : title },
+      classes: n.id === data.culprit ? "culprit" : "" });
+  }
   for (const e of data.edges) {
     const fw = e.rule === "file_watch";
-    els.push({ data: {
-      id: `${e.source}->${e.target}`, source: e.source, target: e.target,
-      elabel: fw && e.confidence != null ? `${e.confidence.toFixed(2)}` : "",
-      col: fw ? (e.confidence >= 0.75 ? "#f0b24a" : "#d3922c") : C.spawn,
-      w: fw ? (e.confidence == null ? 2 : 1.6 + e.confidence * 2.8) : 2.4,
-      style: fw ? "dashed" : "solid",
-    }});
+    els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target,
+      elabel: fw && e.confidence != null ? e.confidence.toFixed(2) : "",
+      col: fw ? "#c99539" : "#565a63", w: fw ? (e.confidence == null ? 1.6 : 1.3 + e.confidence * 2) : 1.6,
+      style: fw ? "dashed" : "solid" } });
   }
-  cy.elements().remove();
-  cy.add(els);
-  const layout = cy.layout({
-    name: "breadthfirst", directed: true, padding: 30, spacingFactor: 1.05,
-    avoidOverlap: true, animate: true, animationDuration: 420, animationEasing: "ease-out",
-  });
-  layout.one("layoutstop", () => cy.animate({ fit: { padding: 80 }, duration: 320, easing: "ease-out" }));
+  cy.elements().remove(); cy.add(els);
+  const layout = cy.layout({ name: "breadthfirst", directed: true, padding: 30, spacingFactor: 1.15, avoidOverlap: true, animate: true, animationDuration: 400, animationEasing: "ease-out" });
+  layout.one("layoutstop", () => cy.animate({ fit: { padding: 90 }, duration: 300, easing: "ease-out" }));
   layout.run();
   overlay(null);
 
   const cn = cy.$id(data.culprit);
   if (cn.nonempty()) { cn.select(); showDetails(cn); }
   const c = $("count");
-  c.innerHTML = `<b>${data.nodes.length}</b> node${data.nodes.length === 1 ? "" : "s"}` +
-                (data.truncated ? " · truncated" : "");
-  c.className = data.truncated ? "count warn" : "count";
+  c.textContent = ` · ${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}${data.truncated ? " (truncated)" : ""}`;
+  c.className = data.truncated ? "warn" : "";
 }
 
-// details panel
 function showDetails(node) {
   const n = node.data("meta"); if (!n) return;
   if (n.kind === "process") {
     const cpu = n.peak_cpu_pct, pct = cpu == null ? 0 : Math.min(100, cpu);
-    $("p-title").textContent = base(n.exe);
-    $("p-sub").textContent = n.exe || "";
+    $("p-title").textContent = base(n.exe); $("p-sub").textContent = n.exe || "";
     $("p-body").innerHTML = `
       <dl class="kv">
         <dt>pid</dt><dd>${n.pid}</dd>
         <dt>user</dt><dd>${n.user || "—"}</dd>
-        <dt>started</dt><dd>${n.observed_spawn ? "observed" : "inferred (pre-capture)"}</dd>
+        <dt>started</dt><dd>${n.observed_spawn ? "observed" : "inferred"}</dd>
         <dt>peak CPU</dt><dd>${cpu == null ? "—" : cpu.toFixed(1) + "%"}</dd>
       </dl>
       <div class="meter"><span style="width:${pct}%;background:${heat(cpu)}"></span></div>
       <div class="divider"></div>
       <dl class="kv"><dt>peak RSS</dt><dd>${humanBytes(n.peak_rss_bytes)}</dd></dl>`;
   } else {
-    $("p-title").textContent = base(n.path);
-    $("p-sub").textContent = n.path || "";
+    $("p-title").textContent = base(n.path); $("p-sub").textContent = n.path || "";
     $("p-body").innerHTML = `<span class="tag2">file</span>
       <p class="hint" style="margin-top:11px">A change to this file likely triggered a process below
       (a <code>file_watch</code> edge). Confidence is shown on the edge.</p>`;
@@ -139,10 +103,9 @@ cy.on("mouseout", "node", () => cy.elements().removeClass("dim hl"));
 cy.on("tap", "node", (e) => showDetails(e.target));
 cy.on("tap", (e) => { if (e.target === cy) { clearDetails(); cy.$(":selected").unselect(); } });
 
-async function ask() {
-  const pid = $("pid").value.trim(), q = $("q").value.trim(), minc = $("minc").value;
+async function trace(query, minc) {
   const params = new URLSearchParams();
-  if (pid) params.set("pid", pid); else if (q) params.set("q", q); else { $("pid").focus(); return; }
+  if (/^\d+$/.test(query)) params.set("pid", query); else params.set("q", query);
   params.set("min_confidence", minc);
   overlay("loading");
   try {
@@ -152,9 +115,13 @@ async function ask() {
     render(data);
   } catch (err) { setError(`request failed: ${err}`); }
 }
-$("f").addEventListener("submit", (e) => { e.preventDefault(); ask(); });
+$("f").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("query").value.trim();
+  if (!v) { $("query").focus(); return; }
+  trace(v, $("minc").value);
+});
 
-// On open: show the loaded DB and auto-trace the hottest process.
 async function init() {
   try { const m = await (await fetch("/api/meta")).json(); if (m.db) $("dbname").textContent = m.db; } catch (_) {}
   try {
