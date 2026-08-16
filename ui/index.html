@@ -52,7 +52,10 @@
 
     /* ---- main ---- */
     main { flex: 1; display: flex; min-height: 0; position: relative; }
-    #cy { flex: 1; min-width: 0; }
+    #cy { flex: 1; min-width: 0; background-color: #0a0b0e;
+      background-image: linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+      background-size: 26px 26px; }
 
     .legend { position: absolute; left: 16px; bottom: 16px; z-index: 3; display: flex; gap: 16px;
       padding: 9px 13px; background: rgba(16,18,22,.8); backdrop-filter: blur(10px);

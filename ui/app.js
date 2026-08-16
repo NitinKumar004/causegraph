@@ -16,23 +16,28 @@ function humanBytes(n) {
 const cy = cytoscape({
   container: $("cy"), minZoom: 0.25, maxZoom: 1.6, wheelSensitivity: 0.22,
   style: [
+    // node-editor card: dark body with a thin coloured TOP accent bar
     { selector: "node", style: {
-        "label": "data(label)", "font-size": 12.5, "font-weight": 600, "line-height": 1.3,
-        "color": "#eef0f3", "text-wrap": "wrap", "text-max-width": 150,
+        "label": "data(label)", "font-size": 12, "font-weight": 600, "line-height": 1.4,
+        "color": "#eceef2", "text-wrap": "wrap", "text-max-width": 150,
         "text-valign": "center", "text-halign": "center",
-        "width": "label", "height": "label", "padding": "13px", "shape": "round-rectangle",
-        "border-width": 1, "border-color": "rgba(255,255,255,.11)", "background-color": "#181b22",
+        "width": "label", "height": "label", "min-width": 96, "padding": "12px", "shape": "round-rectangle",
+        "border-width": 1, "border-color": "rgba(255,255,255,.09)",
+        "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
         "transition-property": "opacity, border-color, underlay-opacity", "transition-duration": "130ms" } },
-    { selector: 'node[kind="file"]', style: { "background-color": "#201b12", "border-color": "rgba(217,164,65,.4)" } },
-    { selector: "node.culprit", style: {
-        "border-width": 1.6, "border-color": C.blue, "underlay-color": C.blue, "underlay-opacity": 0.14, "underlay-padding": 9 } },
-    { selector: "node:selected", style: {
-        "border-width": 1.6, "border-color": "#8ab8f2", "underlay-color": "#8ab8f2", "underlay-opacity": 0.18, "underlay-padding": 9 } },
+    { selector: 'node[kind="process"]', style: {
+        "background-gradient-stop-colors": "#3f7fd0 #3f7fd0 #14161b #14161b", "background-gradient-stop-positions": "0 7% 7% 100%" } },
+    { selector: 'node[kind="file"]', style: {
+        "background-gradient-stop-colors": "#c79233 #c79233 #1a160f #1a160f", "background-gradient-stop-positions": "0 7% 7% 100%" } },
+    { selector: "node.culprit", style: { "border-color": "#5aa0f2", "underlay-color": "#4c94ec", "underlay-opacity": 0.16, "underlay-padding": 8 } },
+    { selector: "node:selected", style: { "border-color": "#8ab8f2", "underlay-color": "#8ab8f2", "underlay-opacity": 0.20, "underlay-padding": 8 } },
+    // curved connectors with a small horizontal pill label
     { selector: "edge", style: {
-        "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.85,
-        "width": "data(w)", "line-color": "data(col)", "target-arrow-color": "data(col)", "line-style": "data(style)", "opacity": 0.8,
-        "label": "data(elabel)", "font-size": 9.5, "color": C.muted, "text-rotation": "autorotate",
-        "text-background-color": "#0c0d10", "text-background-opacity": 0.9, "text-background-padding": 2,
+        "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.8,
+        "width": "data(w)", "line-color": "data(col)", "target-arrow-color": "data(col)", "line-style": "data(style)", "opacity": 0.85,
+        "label": "data(elabel)", "font-size": 9, "font-weight": 600, "color": "#9aa0ab", "text-rotation": "none",
+        "text-background-color": "#181b21", "text-background-opacity": 1, "text-background-padding": 4, "text-background-shape": "round-rectangle",
+        "text-border-width": 1, "text-border-color": "rgba(255,255,255,.1)", "text-border-opacity": 1,
         "transition-property": "opacity", "transition-duration": "130ms" } },
     { selector: ".dim", style: { "opacity": 0.1 } },
     { selector: ".hl", style: { "opacity": 1 } },
@@ -53,7 +58,7 @@ function render(data) {
   for (const e of data.edges) {
     const fw = e.rule === "file_watch";
     els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target,
-      elabel: fw && e.confidence != null ? e.confidence.toFixed(2) : "",
+      elabel: fw ? (e.confidence != null ? e.confidence.toFixed(2) : "triggered") : "spawned",
       col: fw ? "#c99539" : "#565a63", w: fw ? (e.confidence == null ? 1.6 : 1.3 + e.confidence * 2) : 1.6,
       style: fw ? "dashed" : "solid" } });
   }
