@@ -18,3 +18,8 @@ Do not build a confidence scorer/precision filter until a rule actually emits a 
 Keep the LLM/narrator a translator only: resolver picks the entry node, traversal reasons, narrator/llm phrase; the narrator emits ALL user-facing text (incl. caveats), the resolver prints none. — causegraph-M4-M5
 Only treat 'pid N'/'process N' as an explicit pid in a free-text question; a bare number is not a pid. — causegraph-M4-M5
 A `cg why` (or any query) fixture is separate from the tree/path fixture so adding resource.samples can't shift the ancestry goldens. — causegraph-M4-M5
+
+Give every node-key type a single constructor that normalizes (e.g. model.file_key does normpath); two call sites feeding raw vs normalized forms of the same key silently desync edges from nodes. — causegraph-M3f-M4
+When multiple collectors feed one channel, fan them in with a WaitGroup and close the channel exactly once after Wait() — never let each producer close it (double-close panic). — causegraph-M3f-M4
+The first inferred (<1.0) edge sets the confidence contract: provenance = min of the edge's endpoints; precision comes from a structural match (path/exe), not from the confidence threshold. — causegraph-M3f-M4
+A new event KIND is a builder change (builder owns kind→node); a new inferred RULE over existing node types is not (edge rules propose edges only). — causegraph-M3f-M4 (ADR 0001)
