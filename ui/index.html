@@ -5,33 +5,151 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CauseGraph</title>
   <style>
-    :root { color-scheme: light dark; }
+    :root {
+      --bg: #0c0c0e;            /* page plane */
+      --surface: #17171b;      /* panels */
+      --surface-2: #1e1e24;    /* raised / inputs */
+      --surface-3: #26262e;    /* hover */
+      --border: rgba(255,255,255,.09);
+      --border-strong: rgba(255,255,255,.16);
+      --text: #f4f4f3;
+      --text-2: #b9b8b1;
+      --muted: #86867f;
+      --blue: #3f8ae8;         /* process */
+      --amber: #e0a133;        /* file */
+      --good: #2fa34a; --warn: #f0a83c; --hot: #e5544f;
+      --shadow: 0 10px 30px rgba(0,0,0,.45);
+      --radius: 12px;
+      color-scheme: dark;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; }
-    header { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
-             padding: .6rem .9rem; border-bottom: 1px solid #8884; }
-    header h1 { font-size: 1rem; margin: 0 .5rem 0 0; }
-    input { padding: .35rem .5rem; border: 1px solid #8886; border-radius: 6px; }
-    input#q { min-width: 16rem; }
-    button { padding: .35rem .8rem; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
-    #status { margin-left: auto; opacity: .8; }
-    #cy { position: absolute; top: 3.1rem; left: 0; right: 0; bottom: 0; }
-    .legend { font-size: .8rem; opacity: .75; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font: 13.5px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--text); background: var(--bg);
+      background-image: radial-gradient(1200px 600px at 80% -10%, rgba(63,138,232,.10), transparent 60%),
+                        radial-gradient(900px 500px at 0% 110%, rgba(224,161,51,.06), transparent 60%);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    /* ---- top bar ---- */
+    header {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      padding: 12px 18px; border-bottom: 1px solid var(--border);
+      background: rgba(20,20,24,.72); backdrop-filter: blur(10px);
+      position: relative; z-index: 5;
+    }
+    .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: .2px; }
+    .brand .dot { width: 12px; height: 12px; border-radius: 50%;
+      background: conic-gradient(from 210deg, var(--blue), var(--amber), var(--blue));
+      box-shadow: 0 0 12px rgba(63,138,232,.6); }
+    .brand small { color: var(--muted); font-weight: 500; margin-left: 2px; }
+
+    form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .field { position: relative; }
+    input, select, button {
+      font: inherit; color: var(--text);
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 9px; padding: 8px 11px; outline: none; transition: border-color .15s, box-shadow .15s;
+    }
+    input::placeholder { color: var(--muted); }
+    input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(63,138,232,.22); }
+    input#pid { width: 96px; }
+    input#q  { width: 300px; max-width: 46vw; }
+    .sep { color: var(--muted); font-size: 12px; }
+    select { padding-right: 26px; cursor: pointer; }
+    button.primary {
+      background: linear-gradient(180deg, #4a92ec, #2f77d4); border-color: #2f77d4;
+      font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(47,119,212,.35);
+    }
+    button.primary:hover { filter: brightness(1.06); }
+    button.primary:active { transform: translateY(1px); }
+
+    .status { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--text-2); font-size: 12.5px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+    .pill.warn { color: var(--warn); border-color: rgba(240,168,60,.4); background: rgba(240,168,60,.08); }
+    .swatch { width: 10px; height: 10px; border-radius: 3px; }
+    .swatch.round { border-radius: 50%; }
+
+    /* ---- main ---- */
+    main { flex: 1; display: flex; min-height: 0; position: relative; }
+    #cy { flex: 1; min-width: 0; }
+
+    /* empty / loading / error overlays */
+    .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; text-align: center; padding: 24px; pointer-events: none; }
+    .overlay.show { display: flex; }
+    .overlay .glyph { font-size: 40px; opacity: .5; }
+    .overlay h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    .overlay p { margin: 0; color: var(--muted); max-width: 30rem; }
+    .spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--border-strong);
+      border-top-color: var(--blue); animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast { color: var(--hot); background: rgba(229,84,79,.1); border: 1px solid rgba(229,84,79,.4);
+      padding: 8px 12px; border-radius: 9px; }
+
+    /* ---- details panel ---- */
+    aside {
+      width: 300px; flex: 0 0 300px; border-left: 1px solid var(--border);
+      background: rgba(23,23,27,.86); backdrop-filter: blur(8px);
+      padding: 16px; overflow-y: auto; box-shadow: var(--shadow);
+    }
+    aside .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+    aside h3 { margin: 4px 0 2px; font-size: 15px; word-break: break-word; }
+    aside .sub { color: var(--text-2); font-size: 12.5px; margin-bottom: 14px; word-break: break-all; }
+    .kv { display: grid; grid-template-columns: 84px 1fr; gap: 6px 10px; align-items: center; }
+    .kv dt { color: var(--muted); font-size: 12px; }
+    .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .meter { height: 7px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin-top: 3px; }
+    .meter > span { display: block; height: 100%; border-radius: 999px; }
+    .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+    .hint { color: var(--muted); font-size: 12.5px; }
+    .divider { height: 1px; background: var(--border); margin: 14px 0; }
   </style>
 </head>
 <body>
   <header>
-    <h1>CauseGraph</h1>
+    <div class="brand"><span class="dot"></span>CauseGraph <small>causal viewer</small></div>
     <form id="f">
-      <input id="pid" type="text" inputmode="numeric" placeholder="pid, e.g. 900">
-      <span>or</span>
-      <input id="q" type="text" placeholder='question, e.g. "why is the fan loud?"'>
-      <button type="submit">Ask</button>
+      <div class="field"><input id="pid" type="text" inputmode="numeric" placeholder="pid"></div>
+      <span class="sep">or</span>
+      <div class="field"><input id="q" type="text" placeholder='ask — "why is the fan loud?"'></div>
+      <select id="minc" title="Hide inferred causes below this confidence">
+        <option value="0.5" selected>conf ≥ 0.5</option>
+        <option value="0.0">show all</option>
+        <option value="0.7">conf ≥ 0.7</option>
+        <option value="0.9">conf ≥ 0.9</option>
+      </select>
+      <button class="primary" type="submit">Trace</button>
     </form>
-    <span class="legend">■ process&nbsp;&nbsp;● file&nbsp;&nbsp;— thicker/greener edge = higher confidence</span>
-    <span id="status"></span>
+    <div class="status">
+      <span class="pill"><span class="swatch" style="background:var(--blue)"></span>process</span>
+      <span class="pill"><span class="swatch round" style="background:var(--amber)"></span>file</span>
+      <span id="count"></span>
+    </div>
   </header>
-  <div id="cy"></div>
+
+  <main>
+    <div id="cy"></div>
+    <div class="overlay show" id="empty">
+      <div class="glyph">◍</div>
+      <h2>Trace a cause</h2>
+      <p>Enter a <b>pid</b> or ask a question, and CauseGraph draws the process ancestry and the
+         files that likely triggered it — edges weighted by confidence.</p>
+    </div>
+    <div class="overlay" id="loading"><div class="spinner"></div><p>building the graph…</p></div>
+    <div class="overlay" id="error"><div class="toast" id="error-msg"></div></div>
+
+    <aside id="panel">
+      <div class="kicker">selection</div>
+      <h3 id="p-title">Nothing selected</h3>
+      <div class="sub" id="p-sub">Click a node to inspect it.</div>
+      <div id="p-body" class="hint">Run a trace, then click any process or file to see its details.</div>
+    </aside>
+  </main>
+
   <script src="/vendor/cytoscape.min.js"></script>
   <script src="/app.js"></script>
 </body>
