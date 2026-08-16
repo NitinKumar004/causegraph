@@ -56,10 +56,32 @@
 
     /* ---- main ---- */
     main { flex: 1; display: flex; min-height: 0; position: relative; }
-    #cy { flex: 1; min-width: 0; background-color: #0a0b0e;
-      background-image: linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
-      background-size: 26px 26px; }
+    .canvas { flex: 1; min-width: 0; position: relative; }
+    #cy { position: absolute; inset: 0; background-color: #0a0b0e;
+      background-image: linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+      background-size: 28px 28px; }
+
+    /* HTML node cards overlaid on the graph (premium rich-text nodes) */
+    #nodes { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
+    .gnode { position: absolute; left: 0; top: 0; width: 156px; height: 48px; box-sizing: border-box;
+      display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 13px;
+      background: linear-gradient(180deg, #23262e, #181b21); border: 1px solid #30343d; border-radius: 11px;
+      box-shadow: 0 10px 24px -12px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
+      pointer-events: auto; cursor: pointer; will-change: transform;
+      transition: border-color .13s, box-shadow .13s, opacity .13s, background .13s; }
+    .gnode:hover { border-color: #474d58; background: linear-gradient(180deg, #262a33, #1b1e25); }
+    .gnode .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .gnode .ic { width: 8px; height: 8px; border-radius: 2.5px; flex: none; }
+    .gnode .ic.p { background: #6d7787; }
+    .gnode .ic.f { border-radius: 50%; background: #8c7b58; }
+    .gnode .name { font-weight: 600; font-size: 12.5px; letter-spacing: -.1px; color: #edeff2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gnode .pid { font-size: 10px; color: #7f858f; margin-left: 16px; font-variant-numeric: tabular-nums; letter-spacing: .2px; }
+    .gnode.culprit { border-color: #59606c;
+      box-shadow: 0 10px 26px -12px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.07), inset 0 1px 0 rgba(255,255,255,.06); }
+    .gnode.sel { border-color: #79818d; }
+    .gnode.dim { opacity: .26; }
 
     .legend { position: absolute; left: 16px; bottom: 16px; z-index: 3; display: flex; gap: 16px;
       padding: 9px 13px; background: rgba(16,18,22,.8); backdrop-filter: blur(10px);
@@ -70,7 +92,7 @@
     .legend .ln { width: 16px; border-top: 2px solid #7f858e; }
     .legend .ln.dash { border-top: 2px dashed #7f858e; }
 
-    .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    .overlay { position: absolute; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center;
       flex-direction: column; gap: 13px; text-align: center; padding: 24px; pointer-events: none; }
     .overlay.show { display: flex; }
     .overlay .art { width: 84px; height: 84px; opacity: .85; }
@@ -126,7 +148,9 @@
   </header>
 
   <main>
+    <div class="canvas">
     <div id="cy"></div>
+    <div id="nodes"></div>
     <div class="legend">
       <div class="row"><span class="sw" style="background:#5a6474"></span>process</div>
       <div class="row"><span class="sw round" style="background:#6f6350"></span>file</div>
@@ -148,6 +172,8 @@
     </div>
     <div class="overlay" id="loading"><div class="spinner"></div><p>building the graph…</p></div>
     <div class="overlay" id="error"><div class="toast" id="error-msg"></div></div>
+
+    </div><!-- /canvas -->
 
     <aside id="panel">
       <div class="kicker">selection</div>
