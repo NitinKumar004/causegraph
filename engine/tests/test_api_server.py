@@ -44,6 +44,8 @@ def test_server_routes_bind_and_teardown(filewatch_db):
         assert _get_status(port, "/api/graph?pid=abc") == 400   # non-int pid
         assert _get_status(port, "/api/graph?pid=900&min_confidence=hot") == 400  # bad float
         assert _get_status(port, "/nope") == 404                # unknown path
+        s, ctype, body = _get(port, "/api/meta")                # db name for the header chip
+        assert s == 200 and json.loads(body)["db"].endswith(".db")
     finally:
         httpd.shutdown()
         t.join(timeout=2)

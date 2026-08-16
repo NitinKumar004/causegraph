@@ -131,6 +131,8 @@ def make_handler(db: str):
                 return self._send(200, body, ctype)
             if path == "/api/graph":
                 return self._api(parse_qs(parsed.query))
+            if path == "/api/meta":
+                return self._json(200, {"db": os.path.basename(db)})
             return self._send(404, b"not found", "text/plain")
 
         def _api(self, qs):

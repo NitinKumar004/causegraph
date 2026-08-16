@@ -165,3 +165,20 @@ async function ask() {
 }
 
 $("f").addEventListener("submit", (e) => { e.preventDefault(); ask(); });
+
+// On open: show which DB is loaded, and auto-trace the hottest process so the
+// viewer lands on a real graph instead of a blank canvas.
+async function init() {
+  try {
+    const m = await (await fetch("/api/meta")).json();
+    if (m.db) $("dbname").textContent = m.db;
+  } catch (_) { /* leave default */ }
+  try {
+    overlay("loading");
+    const res = await fetch("/api/graph?q=cpu&min_confidence=0.5");
+    const data = await res.json();
+    if (res.ok && !data.error && data.nodes && data.nodes.length) render(data);
+    else overlay("empty");
+  } catch (_) { overlay("empty"); }
+}
+init();
