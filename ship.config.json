@@ -62,6 +62,10 @@
           {
             "name": "why_mem",
             "cmd": "./scripts/cg why \"what is using memory\" --db test/fixtures/why.db"
+          },
+          {
+            "name": "why_file",
+            "cmd": "./scripts/cg why \"why is pid 900 using cpu\" --db test/fixtures/fw.db"
           }
         ],
         "redact": [

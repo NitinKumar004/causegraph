@@ -52,7 +52,8 @@ test-py:
 fixtures: build
 	./scripts/cg load test/fixtures/graph_events.jsonl --db test/fixtures/graph.db
 	./scripts/cg load test/fixtures/why_events.jsonl --db test/fixtures/why.db
-	@echo "wrote test/fixtures/graph.db + why.db"
+	./scripts/cg load test/fixtures/filewatch_events.jsonl --db test/fixtures/fw.db
+	@echo "wrote test/fixtures/graph.db + why.db + fw.db"
 
 clean:
 	rm -rf bin *.db *.db-wal *.db-shm test/fixtures/graph.db

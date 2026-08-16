@@ -1,0 +1,8 @@
+### ./scripts/cg why "why is pid 900 using cpu" --db test/fixtures/fw.db
+exit: 0
+--- stdout
+/usr/bin/python3 (pid 900) is the likely cause: peak CPU 40.0%.
+Note: heat/fan is inferred from sustained CPU; no temperature sensor is available.
+Possibly triggered by a recent change to /etc/app.conf (confidence 0.72).
+No captured parent (root of the capture window).
+--- stderr
