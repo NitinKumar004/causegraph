@@ -1,0 +1,7 @@
+{"id":"g1","ts":100,"host_id":"h","kind":"resource.sample","actor":{"pid":1,"ppid":0,"exe":"/sbin/init","args":[],"user":"root"},"metrics":{"cpu_pct":0.1},"source":"poll","confidence":1.0}
+{"id":"g2","ts":200,"host_id":"h","kind":"process.spawn","actor":{"pid":100,"ppid":1,"exe":"/bin/bash","args":["bash"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"g3","ts":300,"host_id":"h","kind":"process.spawn","actor":{"pid":200,"ppid":100,"exe":"/bin/sleep","args":["sleep","1"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"g4","ts":350,"host_id":"h","kind":"process.spawn","actor":{"pid":201,"ppid":100,"exe":"/usr/bin/vim","args":["vim"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"g5","ts":360,"host_id":"h","kind":"process.spawn","actor":{"pid":300,"ppid":201,"exe":"/usr/bin/grep","args":["grep","x"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"g6","ts":400,"host_id":"h","kind":"process.exit","actor":{"pid":200,"ppid":100,"exe":"/bin/sleep","args":["sleep","1"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"g7","ts":500,"host_id":"h","kind":"resource.sample","actor":{"pid":100,"ppid":1,"exe":"/bin/bash","args":["bash"],"user":"alice"},"metrics":{"cpu_pct":55.0,"rss_bytes":52428800},"source":"poll","confidence":1.0}

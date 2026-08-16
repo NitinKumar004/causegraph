@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "causegraph"
+version = "0.2.0"
+description = "CauseGraph engine: builds an in-memory causal DAG from captured events and answers ancestry queries."
+requires-python = ">=3.11"
+dependencies = [
+    "networkx==3.6.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4"]
+
+[project.scripts]
+cg = "causegraph.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["causegraph*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

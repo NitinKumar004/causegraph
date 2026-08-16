@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# cg — CauseGraph CLI wrapper. Uses the engine venv if present, else system python.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PY="$ROOT/engine/.venv/bin/python"
+if [ ! -x "$PY" ]; then PY="$(command -v python3)"; fi
+exec env PYTHONPATH="$ROOT/engine" "$PY" -m causegraph.cli "$@"

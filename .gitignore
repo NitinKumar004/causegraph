@@ -11,3 +11,9 @@
 *.db
 *.db-wal
 *.db-shm
+
+# python
+engine/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
