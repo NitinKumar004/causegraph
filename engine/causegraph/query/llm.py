@@ -12,7 +12,7 @@ from typing import Callable, Protocol, runtime_checkable
 
 @runtime_checkable
 class Narrator(Protocol):
-    def explain(self, path, culprit, metric, value, assumed: bool = False) -> str:
+    def explain(self, path, culprit, metric, value, assumed: bool = False, causes=None) -> str:
         """Turn an already-computed causal path + culprit into plain text. Pure
         phrasing: no graph access, no reasoning, no network.
 

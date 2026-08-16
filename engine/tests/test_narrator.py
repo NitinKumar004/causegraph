@@ -50,3 +50,22 @@ def test_deterministic():
     a = N.explain(path, path[-1], CPU, 33.3)
     b = N.explain(path, path[-1], CPU, 33.3)
     assert a == b
+
+
+def test_causes_line_appended():
+    path = _path(900)
+    path[-1]["exe"] = "/usr/bin/python3"
+    causes = [{"path": "/etc/app.conf", "confidence": 0.72}]
+    out = N.explain(path, path[-1], CPU, 40.0, causes=causes)
+    assert "Possibly triggered by a recent change to /etc/app.conf (confidence 0.72)." in out
+
+
+def test_value_none_omits_peak_line():
+    path = _path(900)
+    path[-1]["exe"] = "/usr/bin/python3"
+    causes = [{"path": "/etc/app.conf", "confidence": 0.72}]
+    out = N.explain(path, path[-1], CPU, None, causes=causes)
+    assert out.startswith("/usr/bin/python3 (pid 900):")
+    assert "peak CPU" not in out
+    assert "temperature sensor" not in out  # CPU note suppressed when no value
+    assert "Possibly triggered by a recent change to /etc/app.conf" in out

@@ -14,7 +14,7 @@
     "kind": {
       "type": "string",
       "description": "downstream branches on this, never on OS",
-      "enum": ["heartbeat", "process.spawn", "process.exit", "resource.sample"]
+      "enum": ["heartbeat", "process.spawn", "process.exit", "resource.sample", "file.change"]
     },
     "actor": {
       "type": "object",
@@ -53,7 +53,7 @@
     "source": {
       "type": "string",
       "description": "provenance, useful for scoring; poll is the only M0-M2 source",
-      "enum": ["poll", "ebpf", "es", "etw"]
+      "enum": ["poll", "ebpf", "es", "etw", "fsnotify"]
     },
     "confidence": { "type": "number", "description": "1.0 for observed facts; <1 reserved for inferred (M4)" }
   }

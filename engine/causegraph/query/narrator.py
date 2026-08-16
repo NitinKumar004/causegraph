@@ -29,19 +29,28 @@ def _value_str(metric: str, value) -> str:
 class LocalTemplateNarrator:
     """The default provider: templated English, identical output for identical input."""
 
-    def explain(self, path, culprit, metric, value, assumed: bool = False) -> str:
+    def explain(self, path, culprit, metric, value, assumed: bool = False, causes=None) -> str:
         label = _METRIC_LABEL[metric]
-        lines = [
-            f"{culprit['exe']} (pid {culprit['pid']}) is the likely cause: "
-            f"peak {label} {_value_str(metric, value)}."
-        ]
+        if value is not None:
+            lines = [
+                f"{culprit['exe']} (pid {culprit['pid']}) is the likely cause: "
+                f"peak {label} {_value_str(metric, value)}."
+            ]
+        else:
+            # No resource data — this is a file-caused answer; lead with the process.
+            lines = [f"{culprit['exe']} (pid {culprit['pid']}):"]
         if assumed:
             lines.append(
                 "(No metric keyword recognized in the question — assuming a CPU/heat issue.)"
             )
-        if metric == CPU:
+        if metric == CPU and value is not None:
             lines.append(
                 "Note: heat/fan is inferred from sustained CPU; no temperature sensor is available."
+            )
+        for cause in causes or []:
+            lines.append(
+                f"Possibly triggered by a recent change to {cause['path']} "
+                f"(confidence {cause['confidence']:.2f})."
             )
         # ancestry: path is [root, ..., culprit]; show parents most-recent-first.
         ancestors = list(reversed(path[:-1])) if len(path) > 1 else []

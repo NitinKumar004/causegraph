@@ -1,0 +1,4 @@
+{"id":"fc1","ts":1000,"host_id":"h","kind":"file.change","actor":{"pid":0,"ppid":0,"exe":"","args":[],"user":""},"target":{"path":"/etc/app.conf"},"source":"fsnotify","confidence":1.0}
+{"id":"sp1","ts":2000,"host_id":"h","kind":"process.spawn","actor":{"pid":900,"ppid":1,"exe":"/usr/bin/python3","args":["python3","/etc/app.conf"],"user":"alice"},"source":"poll","confidence":1.0}
+{"id":"rs1","ts":3000,"host_id":"h","kind":"resource.sample","actor":{"pid":900,"ppid":1,"exe":"/usr/bin/python3","args":["python3","/etc/app.conf"],"user":"alice"},"metrics":{"cpu_pct":40.0},"source":"poll","confidence":1.0}
+{"id":"fc2","ts":9999999999999,"host_id":"h","kind":"file.change","actor":{"pid":0,"ppid":0,"exe":"","args":[],"user":""},"target":{"path":"/tmp/unrelated.log"},"source":"fsnotify","confidence":1.0}

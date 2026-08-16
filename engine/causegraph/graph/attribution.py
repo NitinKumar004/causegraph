@@ -10,17 +10,23 @@ from __future__ import annotations
 
 import networkx as nx
 
-from causegraph.graph.model import NodeKey
+from causegraph.graph.model import NodeKey, is_process_key
 from causegraph.metrics import CPU, RSS  # re-exported: attribution.CPU/RSS stay valid
 from causegraph.schema import Event, KIND_RESOURCE_SAMPLE
 
 _PEAK_ATTR = {CPU: "peak_cpu_pct", RSS: "peak_rss_bytes"}
 
 
+def _process_keys(g: nx.DiGraph) -> list[NodeKey]:
+    return [k for k in g.nodes() if is_process_key(k)]
+
+
 def annotate(g: nx.DiGraph, events: list[Event]) -> None:
-    """Set peak_cpu_pct / peak_rss_bytes on every node (None if never sampled),
-    taking the max over the resource.samples that fall in each instance's window."""
-    for _, data in g.nodes(data=True):
+    """Set peak_cpu_pct / peak_rss_bytes on every PROCESS node (None if never
+    sampled), taking the max over the resource.samples in each instance's window.
+    FILE nodes are skipped (ADR 0001)."""
+    for key in _process_keys(g):
+        data = g.nodes[key]
         data.setdefault("peak_cpu_pct", None)
         data.setdefault("peak_rss_bytes", None)
 
@@ -74,7 +80,8 @@ def rank_by(g: nx.DiGraph, metric: str) -> list[NodeKey]:
         v = g.nodes[k][attr]
         # None sorts last: (1, 0, key); present sorts first by -value: (0, -v, key)
         return (1, 0.0, k) if v is None else (0, -float(v), k)
-    return sorted(g.nodes(), key=sort_key)
+    # Only PROCESS keys — never compare a ("file",path) key against a (pid,ts) key.
+    return sorted(_process_keys(g), key=sort_key)
 
 
 def peak(g: nx.DiGraph, key: NodeKey, metric: str):

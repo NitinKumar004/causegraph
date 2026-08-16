@@ -4,7 +4,7 @@ process B because B's parent pid is A and A was live at B's spawn (architecture.
 """
 from __future__ import annotations
 
-from causegraph.graph.edges.base import BuildContext, EdgeRule
+from causegraph.graph.edges.base import BuildContext
 from causegraph.graph.model import ProcessNode, ProposedEdge
 
 
@@ -33,5 +33,3 @@ def _parent_live_at(ctx: BuildContext, child: ProcessNode) -> ProcessNode | None
     return best
 
 
-# The rules the builder runs by default. M4 appends here.
-DEFAULT_RULES: list[EdgeRule] = [SpawnRule()]

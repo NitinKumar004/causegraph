@@ -9,19 +9,27 @@ from typing import Iterable, Optional, Sequence
 
 import networkx as nx
 
+from causegraph.graph.edges import DEFAULT_RULES
 from causegraph.graph.edges.base import BuildContext, EdgeRule
-from causegraph.graph.edges.spawn import DEFAULT_RULES
-from causegraph.graph.model import ProcessNode
-from causegraph.schema import Event, KIND_PROCESS_EXIT, KIND_PROCESS_SPAWN
+from causegraph.graph.model import ProcessNode, file_key
+from causegraph.schema import (
+    Event,
+    KIND_FILE_CHANGE,
+    KIND_PROCESS_EXIT,
+    KIND_PROCESS_SPAWN,
+)
 
 
 def _segment(events: Sequence[Event]) -> list[ProcessNode]:
     """Turn per-pid event sequences into process instances. A spawn starts a new
     instance; an exit closes the current one; any other event (resource.sample,
     heartbeat) attaches to the current instance or starts an inferred one for a
-    process that pre-dated capture."""
+    process that pre-dated capture. file.change events are NOT process events (they
+    carry a pid-0 sentinel actor) and are excluded here — they become FILE nodes."""
     by_pid: dict[int, list[Event]] = {}
     for e in events:
+        if e.kind == KIND_FILE_CHANGE:
+            continue
         by_pid.setdefault(e.actor.pid, []).append(e)
 
     nodes: list[ProcessNode] = []
@@ -71,9 +79,18 @@ def build(events: Iterable[Event], rules: Optional[list[EdgeRule]] = None) -> nx
     g = nx.DiGraph()
     for n in nodes:
         g.add_node(
-            n.key, pid=n.pid, ppid=n.ppid, spawn_ts=n.spawn_ts, exit_ts=n.exit_ts,
-            exe=n.exe, user=n.user, args=n.args, observed_spawn=n.observed_spawn,
+            n.key, kind="process", pid=n.pid, ppid=n.ppid, spawn_ts=n.spawn_ts,
+            exit_ts=n.exit_ts, exe=n.exe, user=n.user, args=n.args,
+            observed_spawn=n.observed_spawn,
         )
+
+    # FILE nodes: one per distinct path (builder owns kind->node — ADR 0001).
+    file_changes: dict[str, list[int]] = {}
+    for e in evs:
+        if e.kind == KIND_FILE_CHANGE and e.target is not None and e.target.path is not None:
+            file_changes.setdefault(e.target.path, []).append(e.ts)
+    for path, tss in file_changes.items():
+        g.add_node(file_key(path), kind="file", path=path, changes=sorted(tss))
 
     ctx = BuildContext(events=evs, nodes=nodes, by_pid=by_pid)
     for rule in rules:

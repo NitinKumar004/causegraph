@@ -21,6 +21,9 @@ type Config struct {
 	SampleMinRSS      int64         // ...or rss_bytes >= this
 	HeartbeatInterval time.Duration // periodic liveness event
 
+	// File capture (fsnotify)
+	WatchPaths []string // directories to watch for file.change events (recursive add at start)
+
 	// Identity
 	HostID string
 }

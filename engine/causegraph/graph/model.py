@@ -9,8 +9,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-# A node key is (pid, spawn_ts).
-NodeKey = tuple[int, int]
+# A process node key is (pid, spawn_ts); a file node key is ("file", path).
+# Both flow through the same graph, so key format + the type guard have ONE owner
+# here (ADR 0001).
+NodeKey = tuple
+
+FILE_TAG = "file"
+
+
+def file_key(path: str) -> tuple[str, str]:
+    """The sole constructor of a FILE node key — used by both builder and file_watch."""
+    return (FILE_TAG, path)
+
+
+def is_process_key(key) -> bool:
+    """True for process keys (pid, spawn_ts); False for file keys ("file", path).
+    The single guard that attribution/traverse route through so a (str,str) key
+    never enters a comparison against an (int,int) key."""
+    return isinstance(key[0], int)
 
 
 @dataclass

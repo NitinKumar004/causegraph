@@ -11,10 +11,13 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"causegraph.dev/daemon/internal/collector"
+	"causegraph.dev/daemon/internal/collector/filewatch"
 	"causegraph.dev/daemon/internal/collector/generic"
 	"causegraph.dev/daemon/internal/config"
 	"causegraph.dev/daemon/internal/event"
@@ -32,7 +35,16 @@ func main() {
 	flag.Int64Var(&cfg.MaxRows, "max-rows", cfg.MaxRows, "events table ring-buffer cap")
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", cfg.HeartbeatInterval, "heartbeat interval")
 	flag.DurationVar(&duration, "duration", 0, "run for this long then exit (0 = until SIGINT)")
+	var watch string
+	flag.StringVar(&watch, "watch", "", "comma-separated directories to watch for file changes")
 	flag.Parse()
+	if watch != "" {
+		for _, p := range strings.Split(watch, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				cfg.WatchPaths = append(cfg.WatchPaths, p)
+			}
+		}
+	}
 
 	logger := log.New(os.Stderr, "cged ", log.LstdFlags)
 
@@ -65,16 +77,23 @@ func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 	}
 	defer sink.Close()
 
-	// Backend selection: the ONLY place a concrete backend is named. Everything
-	// below sees collector.Collector.
-	var col collector.Collector
+	// Backend selection: the ONLY place concrete backends are named. Everything
+	// below sees collector.Collector. Multiple backends feed one channel.
+	var cols []collector.Collector
 	pol, err := generic.New(cfg)
 	if err != nil {
 		return err
 	}
-	col = pol
-	defer col.Close() // part of the Collector seam; native backends (M3) release OS handles here
-	logger.Printf("capture: generic poll backend, caps=%+v", col.Capabilities())
+	cols = append(cols, pol)
+	fw, err := filewatch.New(cfg, logger)
+	if err != nil {
+		return err
+	}
+	cols = append(cols, fw)
+	for _, c := range cols {
+		defer c.Close() // part of the Collector seam; native backends release OS handles here
+		logger.Printf("capture: %T caps=%+v", c, c.Capabilities())
+	}
 
 	p := pipeline.New(cfg, sink, logger)
 
@@ -99,13 +118,20 @@ func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 	heartbeatDone := make(chan struct{})
 	go func() { heartbeatLoop(ctx, cfg, p); close(heartbeatDone) }()
 
-	// collector: on return, close out so the bridge finishes.
-	go func() {
-		if err := col.Start(ctx, out); err != nil {
-			logger.Printf("collector stopped: %v", err)
-		}
-		close(out)
-	}()
+	// collectors: each runs in its own goroutine into the shared out channel; out
+	// is closed EXACTLY once, after all collectors return (WaitGroup fan-in), so
+	// no goroutine can double-close it.
+	var cwg sync.WaitGroup
+	for _, c := range cols {
+		cwg.Add(1)
+		go func(c collector.Collector) {
+			defer cwg.Done()
+			if err := c.Start(ctx, out); err != nil {
+				logger.Printf("collector %T stopped: %v", c, err)
+			}
+		}(c)
+	}
+	go func() { cwg.Wait(); close(out) }()
 
 	logger.Printf("cged running, writing to %s (Ctrl-C to stop)", cfg.DBPath)
 	<-ctx.Done()

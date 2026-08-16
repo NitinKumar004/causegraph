@@ -12,6 +12,9 @@ import (
 // command line cannot blow up memory or the store row. Oversized => rejected.
 const MaxArgsBytes = 1 << 20 // 1 MiB
 
+// MaxPathBytes bounds target.path (file events are the first to populate it).
+const MaxPathBytes = 1 << 16 // 64 KiB
+
 // Validate enforces the schema's closed enums and basic invariants that JSON
 // shape alone cannot. Codec Encode/Decode both call it, so an invalid Event
 // never reaches the store or crosses the language boundary.
@@ -43,6 +46,15 @@ func (e Event) Validate() error {
 	}
 	if total > MaxArgsBytes {
 		return fmt.Errorf("event: actor.args %d bytes exceeds cap %d", total, MaxArgsBytes)
+	}
+	if e.Target != nil && e.Target.Path != nil {
+		p := *e.Target.Path
+		if !utf8.ValidString(p) {
+			return fmt.Errorf("event: target.path is not valid UTF-8")
+		}
+		if len(p) > MaxPathBytes {
+			return fmt.Errorf("event: target.path %d bytes exceeds cap %d", len(p), MaxPathBytes)
+		}
 	}
 	return nil
 }

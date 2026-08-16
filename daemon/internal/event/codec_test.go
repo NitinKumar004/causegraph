@@ -132,6 +132,46 @@ func TestValidationRejects(t *testing.T) {
 	}
 }
 
+// file.change round-trips losslessly, including target.path and the UNKNOWN actor.
+func TestFileChangeRoundTrip(t *testing.T) {
+	e := Event{
+		ID: "f1", Ts: 5, HostID: "h", Kind: KindFileChange,
+		Actor:  Actor{Pid: 0, Ppid: 0, Exe: "", Args: []string{}, User: ""},
+		Target: &Target{Path: StrPtr("/etc/app.conf")},
+		Source: SourceFsnotify, Confidence: 1.0,
+	}
+	b, err := Encode(e)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	got, err := Decode(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !reflect.DeepEqual(e, got) {
+		t.Errorf("file.change not lossless:\n want %+v\n got %+v", e, got)
+	}
+}
+
+// AC2 security: target.path is validated (non-UTF8 / oversized rejected).
+func TestTargetPathValidation(t *testing.T) {
+	base := Event{
+		ID: "f", Ts: 1, HostID: "h", Kind: KindFileChange,
+		Actor:  Actor{Pid: 0, Ppid: 0, Exe: "", Args: []string{}, User: ""},
+		Source: SourceFsnotify, Confidence: 1.0,
+	}
+	bad := base
+	bad.Target = &Target{Path: StrPtr(string([]byte{0xff, 0xfe}))}
+	if err := bad.Validate(); err == nil {
+		t.Error("expected non-UTF8 target.path to be rejected")
+	}
+	big := base
+	big.Target = &Target{Path: StrPtr(strings.Repeat("a", MaxPathBytes+1))}
+	if err := big.Validate(); err == nil {
+		t.Error("expected oversized target.path to be rejected")
+	}
+}
+
 // AC (security): unknown fields are rejected (closed schema).
 func TestDecodeRejectsUnknownField(t *testing.T) {
 	bad := `{"id":"x","ts":1,"host_id":"h","kind":"heartbeat","actor":{"pid":1,"ppid":0,"exe":"/x","args":[],"user":"u"},"source":"poll","confidence":1.0,"rogue":true}`

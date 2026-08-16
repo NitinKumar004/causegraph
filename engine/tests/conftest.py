@@ -52,3 +52,19 @@ def why_db(tmp_path, why_events) -> str:
     finally:
         conn.close()
     return db
+
+
+@pytest.fixture
+def filewatch_events() -> list[Event]:
+    return load_jsonl("filewatch_events.jsonl")
+
+
+@pytest.fixture
+def filewatch_db(tmp_path, filewatch_events) -> str:
+    db = str(tmp_path / "fw.db")
+    conn = sqlite3.connect(db)
+    try:
+        reader.write_events(conn, filewatch_events)
+    finally:
+        conn.close()
+    return db

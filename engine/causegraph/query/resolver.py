@@ -55,16 +55,16 @@ def resolve(g: nx.DiGraph, question: str) -> Resolution:
 
     metric, assumed = _metric_for(q)
 
-    # Explicit pid in the question is honored (bypasses ranking).
+    # Explicit pid in the question is honored (bypasses ranking). value may be None
+    # (no resource sample) — cmd_why decides using file causes, so we do NOT exit
+    # here just because there is no CPU/RSS data for the pid.
     m = _PID.search(q)
     if m:
         pid = int(m.group(1))
         key = traverse.latest_instance(g, pid)
         if key is None:
             return Resolution(False, f"no process with pid {pid} in the capture window")
-        value = attribution.peak(g, key, metric)
-        if value is None:
-            return Resolution(False, f"no {metric.upper()} attribution data for pid {pid}")
+        value = attribution.peak(g, key, metric)  # may be None
         return Resolution(True, culprit=key, metric=metric, value=value, assumed=assumed)
 
     # Otherwise pick the hottest node by the chosen metric.

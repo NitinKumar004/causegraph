@@ -86,3 +86,52 @@ func TestRunEndToEndCleanShutdown(t *testing.T) {
 		t.Error("daemon DB missing meta schema_version")
 	}
 }
+
+// AC3: both collectors (poller + filewatch) run into one channel; a file change
+// during the run is captured. Also proves the WaitGroup fan-in (no double-close panic).
+func TestRunWithFileWatchCapturesFileChange(t *testing.T) {
+	tmp := t.TempDir()
+	dbPath := filepath.Join(tmp, "cged.db")
+	watchDir := filepath.Join(tmp, "watched")
+	if err := os.MkdirAll(watchDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.DBPath = dbPath
+	cfg.SampleInterval = 50 * time.Millisecond
+	cfg.HeartbeatInterval = 60 * time.Millisecond
+	cfg.WatchPaths = []string{watchDir}
+	cfg.HostID = "h"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, cfg, log.New(io.Discard, "", 0)) }()
+
+	time.Sleep(250 * time.Millisecond) // let the watcher register
+	if err := os.WriteFile(filepath.Join(watchDir, "app.conf"), []byte("k=v"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not shut down (double-close/deadlock?)")
+	}
+
+	s, err := store.OpenSQLite(dbPath, cfg.MaxRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var fc int64
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE kind='file.change'`).Scan(&fc); err != nil {
+		t.Fatal(err)
+	}
+	if fc == 0 {
+		t.Error("expected at least one file.change event from the watcher")
+	}
+}

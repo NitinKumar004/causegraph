@@ -75,14 +75,22 @@ def cmd_why(args: argparse.Namespace) -> int:
         print(res.message, file=sys.stderr)
         return 1
 
+    min_conf = 0.0 if args.all else args.min_confidence
+    causes_raw = traverse.causes(g, res.culprit, min_confidence=min_conf)
+    if res.value is None and not causes_raw:
+        print(f"no attribution or file-cause data for pid {g.nodes[res.culprit]['pid']}",
+              file=sys.stderr)
+        return 1
+
     try:
         narrator = llm.get_narrator(args.provider)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 1
+    causes = [{"path": g.nodes[c]["path"], "confidence": conf} for c, conf in causes_raw]
     path = [_summary(g, k) for k in traverse.ancestry_path(g, res.culprit)]
     culprit = _summary(g, res.culprit)
-    print(narrator.explain(path, culprit, res.metric, res.value, res.assumed))
+    print(narrator.explain(path, culprit, res.metric, res.value, res.assumed, causes=causes))
     return 0
 
 
@@ -120,6 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
     wy.add_argument("question", help='e.g. "why is the fan loud?" or "what is using memory"')
     wy.add_argument("--db", default="causegraph.db", help="events database path")
     wy.add_argument("--provider", default=None, help="narrator provider (default: local offline)")
+    wy.add_argument("--min-confidence", type=float, default=0.5, dest="min_confidence",
+                    help="hide inferred causes below this confidence (default 0.5)")
+    wy.add_argument("--all", action="store_true", help="show all causes, even low-confidence")
     wy.set_defaults(func=cmd_why)
 
     lo = sub.add_parser("load", help="seed a database from an events JSONL file (dev helper)")

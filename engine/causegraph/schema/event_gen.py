@@ -120,13 +120,15 @@ KIND_HEARTBEAT = "heartbeat"
 KIND_PROCESS_SPAWN = "process.spawn"
 KIND_PROCESS_EXIT = "process.exit"
 KIND_RESOURCE_SAMPLE = "resource.sample"
+KIND_FILE_CHANGE = "file.change"
 
 SOURCE_POLL = "poll"
 SOURCE_EBPF = "ebpf"
 SOURCE_ES = "es"
 SOURCE_ETW = "etw"
+SOURCE_FSNOTIFY = "fsnotify"
 
-KINDS = frozenset({"heartbeat", "process.spawn", "process.exit", "resource.sample"})
-SOURCES = frozenset({"poll", "ebpf", "es", "etw"})
+KINDS = frozenset({"heartbeat", "process.spawn", "process.exit", "resource.sample", "file.change"})
+SOURCES = frozenset({"poll", "ebpf", "es", "etw", "fsnotify"})
 SCHEMA_VERSION = 1
 

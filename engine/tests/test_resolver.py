@@ -64,8 +64,9 @@ def test_bare_number_is_not_a_pid(why_events):
     assert r2.ok and r2.metric == RSS  # '5' ignored, keyword 'memory' wins
 
 
-def test_explicit_pid_with_no_attribution_exit1():
-    # pid resolves to a real node that has zero resource.samples -> exit 1, no None culprit.
+def test_explicit_pid_no_attribution_returns_ok_value_none():
+    # AC7b: explicit-pid path returns ok with value=None (does NOT exit here) so
+    # cmd_why can still report a file cause; the exit-1-when-nothing decision is cmd_why's.
     from causegraph.schema import Event
     ev = Event.from_dict({"id": "s", "ts": 1, "host_id": "h", "kind": "process.spawn",
         "actor": {"pid": 7, "ppid": 1, "exe": "/x", "args": [], "user": "u"},
@@ -73,7 +74,7 @@ def test_explicit_pid_with_no_attribution_exit1():
     g = builder.build([ev])
     attribution.annotate(g, [])  # no samples
     r = resolver.resolve(g, "why is pid 7 slow")
-    assert not r.ok and "attribution" in r.message.lower() and "7" in r.message
+    assert r.ok and r.value is None and g.nodes[r.culprit]["pid"] == 7
 
 
 def test_empty_db_exit1():

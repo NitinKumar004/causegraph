@@ -18,11 +18,26 @@ def latest_instance(g: nx.DiGraph, pid: int) -> NodeKey | None:
 
 
 def parent_of(g: nx.DiGraph, key: NodeKey) -> NodeKey | None:
-    """The single spawn parent (highest-confidence predecessor if several)."""
-    preds = list(g.predecessors(key))
+    """The single spawn parent: highest-confidence predecessor along a `spawn`
+    edge only. Inferred edges (e.g. file_watch, which point FILE->process) are
+    excluded from lineage so a FILE key never enters the ancestry chain (ADR 0001)."""
+    preds = [p for p in g.predecessors(key) if g.edges[p, key].get("rule") == "spawn"]
     if not preds:
         return None
     return max(preds, key=lambda p: g.edges[p, key].get("confidence", 0.0))
+
+
+def causes(g: nx.DiGraph, key: NodeKey, min_confidence: float = 0.5) -> list[tuple[NodeKey, float]]:
+    """Incoming inferred (non-spawn) edges — e.g. file_watch file causes — with
+    confidence >= min_confidence, most-confident first. Precision-first: weak edges
+    are hidden unless min_confidence is lowered."""
+    out = []
+    for p in g.predecessors(key):
+        d = g.edges[p, key]
+        if d.get("rule") != "spawn" and d.get("confidence", 0.0) >= min_confidence:
+            out.append((p, d.get("confidence", 0.0)))
+    out.sort(key=lambda pc: (-pc[1], str(pc[0])))
+    return out
 
 
 def ancestry_path(g: nx.DiGraph, key: NodeKey) -> list[NodeKey]:

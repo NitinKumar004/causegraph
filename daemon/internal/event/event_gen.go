@@ -39,21 +39,23 @@ const (
 	KindProcessSpawn   = "process.spawn"
 	KindProcessExit    = "process.exit"
 	KindResourceSample = "resource.sample"
+	KindFileChange     = "file.change"
 )
 
 // Event sources (schema enum).
 const (
-	SourcePoll = "poll"
-	SourceEbpf = "ebpf"
-	SourceEs   = "es"
-	SourceEtw  = "etw"
+	SourcePoll     = "poll"
+	SourceEbpf     = "ebpf"
+	SourceEs       = "es"
+	SourceEtw      = "etw"
+	SourceFsnotify = "fsnotify"
 )
 
 // ValidKinds is the closed set of schema kinds.
-var ValidKinds = map[string]bool{"heartbeat": true, "process.spawn": true, "process.exit": true, "resource.sample": true}
+var ValidKinds = map[string]bool{"heartbeat": true, "process.spawn": true, "process.exit": true, "resource.sample": true, "file.change": true}
 
 // ValidSources is the closed set of schema sources.
-var ValidSources = map[string]bool{"poll": true, "ebpf": true, "es": true, "etw": true}
+var ValidSources = map[string]bool{"poll": true, "ebpf": true, "es": true, "etw": true, "fsnotify": true}
 
 // SchemaVersion is the schema's x-schema-version.
 const SchemaVersion = 1

@@ -8,8 +8,10 @@ from causegraph.schema.event_gen import (  # noqa: F401
     KIND_PROCESS_SPAWN,
     KIND_PROCESS_EXIT,
     KIND_RESOURCE_SAMPLE,
+    KIND_FILE_CHANGE,
     KINDS,
     SOURCES,
     SOURCE_POLL,
+    SOURCE_FSNOTIFY,
     SCHEMA_VERSION,
 )
