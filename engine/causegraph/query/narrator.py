@@ -8,7 +8,7 @@ graph, keeping all graph access out of here.
 """
 from __future__ import annotations
 
-from causegraph.graph.attribution import CPU
+from causegraph.metrics import CPU  # neutral constant; narrator never touches the graph
 
 _METRIC_LABEL = {CPU: "CPU", "rss": "memory"}
 

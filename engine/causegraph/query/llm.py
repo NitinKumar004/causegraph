@@ -14,7 +14,12 @@ from typing import Callable, Protocol, runtime_checkable
 class Narrator(Protocol):
     def explain(self, path, culprit, metric, value, assumed: bool = False) -> str:
         """Turn an already-computed causal path + culprit into plain text. Pure
-        phrasing: no graph access, no reasoning, no network."""
+        phrasing: no graph access, no reasoning, no network.
+
+        NOTE: this contract is intentionally thin for the all-1.0-ppid world. When
+        M4-full adds inferred edges (per-edge confidence/rule) and M5-full adds a
+        real provider, grow it ADDITIVELY via defaulted kwargs (as `assumed=False`
+        did) so existing providers keep working — do not treat it as frozen."""
         ...
 
 

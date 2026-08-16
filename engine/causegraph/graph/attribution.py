@@ -11,10 +11,9 @@ from __future__ import annotations
 import networkx as nx
 
 from causegraph.graph.model import NodeKey
+from causegraph.metrics import CPU, RSS  # re-exported: attribution.CPU/RSS stay valid
 from causegraph.schema import Event, KIND_RESOURCE_SAMPLE
 
-CPU = "cpu"
-RSS = "rss"
 _PEAK_ATTR = {CPU: "peak_cpu_pct", RSS: "peak_rss_bytes"}
 
 
@@ -45,8 +44,13 @@ def _max_opt(cur, val):
 
 def _instance_for(g: nx.DiGraph, by_pid: dict, pid: int, ts: int) -> NodeKey | None:
     """The instance of pid whose window contains ts: prefer the latest spawn_ts<=ts
-    whose exit_ts is None or >= ts; fall back to the latest spawn_ts<=ts; else the
-    earliest instance (a sample just before an inferred start)."""
+    whose exit_ts is None or > ts; fall back to the latest spawn_ts<=ts; else the
+    earliest instance (a sample just before an inferred start).
+
+    CAVEAT (offline/polling): when no window contains ts, the fallback can credit a
+    spike to an already-exited or earliest instance. Harmless at polling fidelity;
+    revisit once M3 native capture tightens spawn/exit timing rather than inheriting
+    this silently."""
     keys = by_pid.get(pid)
     if not keys:
         return None
