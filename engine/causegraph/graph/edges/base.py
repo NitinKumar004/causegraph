@@ -5,7 +5,7 @@ socket, cron, resource) is a new file here, never a builder refactor.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from causegraph.graph.model import ProcessNode, ProposedEdge
