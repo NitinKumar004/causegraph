@@ -18,20 +18,20 @@ const cy = cytoscape({
   style: [
     // node-editor card: dark body with a thin coloured TOP accent bar
     { selector: "node", style: {
-        "label": "data(label)", "font-size": 12, "font-weight": 600, "line-height": 1.4,
-        "color": "#eceef2", "text-wrap": "wrap", "text-max-width": 150,
+        "label": "data(label)", "font-size": 10.5, "font-weight": 600, "line-height": 1.55,
+        "color": "#e4e6ea", "text-wrap": "wrap", "text-max-width": 160,
         "text-valign": "center", "text-halign": "center",
-        "width": "label", "height": "label", "min-width": 96, "padding": "12px", "shape": "round-rectangle",
-        "border-width": 1, "border-color": "rgba(255,255,255,.09)",
+        "width": "label", "height": "label", "min-width": 108, "padding": "16px", "shape": "round-rectangle",
+        "border-width": 1, "border-color": "rgba(255,255,255,.11)",
         "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
-        "transition-property": "opacity, border-color, underlay-opacity", "transition-duration": "130ms" } },
+        "transition-property": "opacity, border-color", "transition-duration": "130ms" } },
     // muted, near-monochrome: a barely-there desaturated header on a dark-grey body
     { selector: 'node[kind="process"]', style: {
         "background-gradient-stop-colors": "#47505e #47505e #23262c #23262c", "background-gradient-stop-positions": "0 13% 13% 100%" } },
     { selector: 'node[kind="file"]', style: {
         "background-gradient-stop-colors": "#5f5644 #5f5644 #26231d #26231d", "background-gradient-stop-positions": "0 13% 13% 100%" } },
-    { selector: "node.culprit", style: { "border-color": "rgba(255,255,255,.34)", "underlay-color": "#ffffff", "underlay-opacity": 0.05, "underlay-padding": 7 } },
-    { selector: "node:selected", style: { "border-color": "rgba(255,255,255,.5)", "underlay-color": "#ffffff", "underlay-opacity": 0.07, "underlay-padding": 7 } },
+    { selector: "node.culprit", style: { "border-width": 1.4, "border-color": "rgba(255,255,255,.32)" } },
+    { selector: "node:selected", style: { "border-width": 1.6, "border-color": "rgba(255,255,255,.55)" } },
     // curved connectors with a small horizontal pill label
     { selector: "edge", style: {
         "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.8,
