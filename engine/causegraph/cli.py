@@ -17,9 +17,10 @@ from typing import Optional, Sequence
 
 import networkx as nx
 
-from causegraph.graph import builder, traverse
+from causegraph.graph import attribution, builder, traverse
 from causegraph.graph.model import NodeKey
 from causegraph.ingest import reader
+from causegraph.query import llm, resolver
 from causegraph.schema import Event
 
 
@@ -57,6 +58,28 @@ def cmd_path(args: argparse.Namespace) -> int:
     return 0
 
 
+def _summary(g: nx.DiGraph, key: NodeKey) -> dict:
+    n = g.nodes[key]
+    return {"pid": n["pid"], "exe": n["exe"] or "?", "user": n["user"] or "?"}
+
+
+def cmd_why(args: argparse.Namespace) -> int:
+    events = list(reader.read_events(args.db))
+    g = builder.build(events)
+    attribution.annotate(g, events)  # same event list — one read, no re-scan
+
+    res = resolver.resolve(g, args.question)
+    if not res.ok:
+        print(res.message, file=sys.stderr)
+        return 1
+
+    path = [_summary(g, k) for k in traverse.ancestry_path(g, res.culprit)]
+    culprit = _summary(g, res.culprit)
+    narrator = llm.get_narrator(args.provider)
+    print(narrator.explain(path, culprit, res.metric, res.value, res.assumed))
+    return 0
+
+
 def cmd_load(args: argparse.Namespace) -> int:
     events = []
     with open(args.jsonl, encoding="utf-8") as f:
@@ -86,6 +109,12 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("pid", type=int)
     pa.add_argument("--db", default="causegraph.db", help="events database path")
     pa.set_defaults(func=cmd_path)
+
+    wy = sub.add_parser("why", help="explain why a process is hot/using resources")
+    wy.add_argument("question", help='e.g. "why is the fan loud?" or "what is using memory"')
+    wy.add_argument("--db", default="causegraph.db", help="events database path")
+    wy.add_argument("--provider", default=None, help="narrator provider (default: local offline)")
+    wy.set_defaults(func=cmd_why)
 
     lo = sub.add_parser("load", help="seed a database from an events JSONL file (dev helper)")
     lo.add_argument("jsonl")

@@ -41,17 +41,18 @@ scale: build-go
 	@mkdir -p .evidence/artifacts
 	go -C daemon run ./cmd/scalebench -n 100000 > .evidence/artifacts/scale_write.json
 	@test -x $(PY) || $(MAKE) venv
-	PYTHONPATH=engine $(PY) scripts/scale_query.py --rows 1000000 --json .evidence/artifacts/scale_query.json >/dev/null
+	PYTHONPATH=engine $(PY) scripts/scale_query.py --rows 500000 --json .evidence/artifacts/scale_query.json >/dev/null
 	@echo "wrote .evidence/artifacts/scale_write.json + scale_query.json"
 
 test-py:
 	@test -x $(PYTEST) || $(MAKE) venv
 	cd engine && PYTHONPATH=. $(PYTEST) -q
 
-## fixtures: build a demo DB from the committed graph fixture
+## fixtures: build demo DBs from the committed fixtures
 fixtures: build
 	./scripts/cg load test/fixtures/graph_events.jsonl --db test/fixtures/graph.db
-	@echo "wrote test/fixtures/graph.db"
+	./scripts/cg load test/fixtures/why_events.jsonl --db test/fixtures/why.db
+	@echo "wrote test/fixtures/graph.db + why.db"
 
 clean:
 	rm -rf bin *.db *.db-wal *.db-shm test/fixtures/graph.db

@@ -54,6 +54,14 @@
           {
             "name": "path",
             "cmd": "./scripts/cg path 300 --db test/fixtures/graph.db"
+          },
+          {
+            "name": "why_cpu",
+            "cmd": "./scripts/cg why \"why is the fan loud?\" --db test/fixtures/why.db"
+          },
+          {
+            "name": "why_mem",
+            "cmd": "./scripts/cg why \"what is using memory\" --db test/fixtures/why.db"
           }
         ],
         "redact": [

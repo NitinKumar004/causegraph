@@ -13,12 +13,12 @@ def test_help_lists_m2_subcommands(capsys):
         assert token in out, f"help missing {token!r}"
 
 
-def test_why_is_not_a_subcommand(capsys):
-    """`cg why` is reserved for M5 (NL query); invoking it must error, not run ([D])."""
+def test_why_is_now_a_subcommand(capsys):
+    """`cg why` landed in M5-offline; help lists it alongside tree/path/load."""
     with pytest.raises(SystemExit) as ei:
-        main(["why", "fan is loud"])
-    assert ei.value.code == 2  # argparse: invalid choice
-    assert "invalid choice" in capsys.readouterr().err
+        main(["--help"])
+    assert ei.value.code == 0
+    assert "why" in capsys.readouterr().out
 
 
 def test_rejects_non_integer_pid(capsys):

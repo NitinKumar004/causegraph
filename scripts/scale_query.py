@@ -22,7 +22,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "engine"))
 
-from causegraph.graph import builder, traverse  # noqa: E402
+from causegraph.graph import attribution, builder, traverse  # noqa: E402
 from causegraph.ingest import reader  # noqa: E402
 
 
@@ -32,52 +32,63 @@ def _peak_rss_mib() -> float:
     return (ru / (1024 * 1024)) if sys.platform == "darwin" else (ru / 1024)
 
 
-def gen_spawn_rows(rows: int):
-    """A fanout-10 process tree of `rows` spawn events; pid i, ppid i//10."""
+def gen_rows(rows: int):
+    """A fanout-10 process tree of `rows` spawn events (pid i, ppid i//10), each
+    followed by one resource.sample so attribution has O(samples) real work."""
     for i in range(1, rows + 1):
         pid = i
         ppid = i // 10  # 0 for the root band
-        data = (
-            '{"id":"e%d","ts":%d,"host_id":"b","kind":"process.spawn",'
-            '"actor":{"pid":%d,"ppid":%d,"exe":"/bin/x","args":[],"user":"u"},'
-            '"source":"poll","confidence":1.0}' % (i, i, pid, ppid)
-        )
-        yield (i, pid, ppid, "process.spawn", data)
+        yield (i * 2, pid, ppid, "process.spawn",
+               '{"id":"s%d","ts":%d,"host_id":"b","kind":"process.spawn",'
+               '"actor":{"pid":%d,"ppid":%d,"exe":"/bin/x","args":[],"user":"u"},'
+               '"source":"poll","confidence":1.0}' % (i, i * 2, pid, ppid))
+        yield (i * 2 + 1, pid, ppid, "resource.sample",
+               '{"id":"r%d","ts":%d,"host_id":"b","kind":"resource.sample",'
+               '"actor":{"pid":%d,"ppid":%d,"exe":"/bin/x","args":[],"user":"u"},'
+               '"metrics":{"cpu_pct":%d.5},"source":"poll","confidence":1.0}'
+               % (i, i * 2 + 1, pid, ppid, i % 100))
 
 
-def measure_query(rows: int, db_path: str) -> dict:
+def _percentiles(samples: list[float]) -> dict:
+    s = sorted(samples)
+    at = lambda p: s[min(len(s) - 1, int(p * (len(s) - 1)))]
+    return {"p50": round(at(0.50), 4), "p95": round(at(0.95), 4), "p99": round(at(0.99), 4)}
+
+
+def measure_query(spawns: int, db_path: str, trials: int = 20) -> dict:
     conn = sqlite3.connect(db_path)
     reader.ensure_schema(conn)
     conn.executemany(
         "INSERT INTO events(ts, pid, ppid, kind, data) VALUES(?,?,?,?,?)",
-        gen_spawn_rows(rows),
+        gen_rows(spawns),
     )
     conn.commit()
     conn.close()
 
+    events = list(reader.read_events(db_path))  # one read, shared by build + attribution
     t0 = time.perf_counter()
-    g = builder.build(reader.read_events(db_path))
+    g = builder.build(events)
     build_s = time.perf_counter() - t0
 
-    # traverse: full subtree from the root band, and a root-ward path from a leaf.
-    deep_leaf = traverse.latest_instance(g, rows)
-    root = traverse.latest_instance(g, 1)
-    t1 = time.perf_counter()
-    _ = traverse.subtree(g, root)
-    tree_s = time.perf_counter() - t1
-    t2 = time.perf_counter()
-    _ = traverse.ancestry_path(g, deep_leaf)
-    path_s = time.perf_counter() - t2
+    # The measured pass: attribution over ALL resource.samples (O(samples)) + rank.
+    added = []
+    for _ in range(trials):
+        t = time.perf_counter()
+        attribution.annotate(g, events)
+        _ = attribution.rank_by(g, attribution.CPU)
+        added.append(time.perf_counter() - t)
 
     return {
-        "rows": rows,
+        "spawn_events": spawns,
+        "resource_samples": spawns,
+        "total_rows": len(events),
         "nodes": g.number_of_nodes(),
         "edges": g.number_of_edges(),
         "build_seconds": round(build_s, 3),
-        "tree_traverse_seconds": round(tree_s, 4),
-        "path_traverse_seconds": round(path_s, 6),
+        "attribution_added_seconds": _percentiles(added),
+        "trials": trials,
         "peak_rss_mib": round(_peak_rss_mib(), 1),
-        "note": "build is O(rows) per query — the binding limit named in the plan",
+        "note": "build is O(rows) per query (binding limit); attribution adds one O(samples) pass",
     }
 
 
