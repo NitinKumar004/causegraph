@@ -25,12 +25,13 @@ const cy = cytoscape({
         "border-width": 1, "border-color": "rgba(255,255,255,.09)",
         "background-fill": "linear-gradient", "background-gradient-direction": "to-bottom",
         "transition-property": "opacity, border-color, underlay-opacity", "transition-duration": "130ms" } },
+    // muted, near-monochrome: a barely-there desaturated header on a dark-grey body
     { selector: 'node[kind="process"]', style: {
-        "background-gradient-stop-colors": "#4a90d9 #4a90d9 #2b2e35 #2b2e35", "background-gradient-stop-positions": "0 13% 13% 100%" } },
+        "background-gradient-stop-colors": "#47505e #47505e #23262c #23262c", "background-gradient-stop-positions": "0 13% 13% 100%" } },
     { selector: 'node[kind="file"]', style: {
-        "background-gradient-stop-colors": "#d1962f #d1962f #302a22 #302a22", "background-gradient-stop-positions": "0 13% 13% 100%" } },
-    { selector: "node.culprit", style: { "border-color": "#5aa0f2", "underlay-color": "#4c94ec", "underlay-opacity": 0.16, "underlay-padding": 8 } },
-    { selector: "node:selected", style: { "border-color": "#8ab8f2", "underlay-color": "#8ab8f2", "underlay-opacity": 0.20, "underlay-padding": 8 } },
+        "background-gradient-stop-colors": "#5f5644 #5f5644 #26231d #26231d", "background-gradient-stop-positions": "0 13% 13% 100%" } },
+    { selector: "node.culprit", style: { "border-color": "rgba(255,255,255,.34)", "underlay-color": "#ffffff", "underlay-opacity": 0.05, "underlay-padding": 7 } },
+    { selector: "node:selected", style: { "border-color": "rgba(255,255,255,.5)", "underlay-color": "#ffffff", "underlay-opacity": 0.07, "underlay-padding": 7 } },
     // curved connectors with a small horizontal pill label
     { selector: "edge", style: {
         "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.8,
@@ -58,9 +59,8 @@ function render(data) {
   for (const e of data.edges) {
     const fw = e.rule === "file_watch";
     els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target,
-      elabel: "", conf: fw ? e.confidence : null,  // clean coloured curves; confidence shown in the panel
-      col: fw ? "#d1962f" : "#9aa0aa", w: fw ? (e.confidence == null ? 1.6 : 1.3 + e.confidence * 1.8) : 1.8,
-      style: fw ? "dashed" : "solid" } });
+      elabel: "", conf: fw ? e.confidence : null,  // clean thin curves; confidence shown in the panel
+      col: "#7f858e", w: 1.5, style: fw ? "dashed" : "solid" } });
   }
   cy.elements().remove(); cy.add(els);
   const layout = cy.layout({ name: "breadthfirst", directed: true, padding: 30, spacingFactor: 1.15, avoidOverlap: true, animate: true, animationDuration: 400, animationEasing: "ease-out" });
