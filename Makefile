@@ -30,11 +30,19 @@ build: build-go
 	@chmod +x scripts/cg
 	@echo "built bin/cged and scripts/cg"
 
-## test: the full gate — schema drift + Go (race) + Python
-test: check-gen test-go test-py
+## test: the full gate — schema drift + Go (race) + Python (incl. seam integration)
+test: check-gen build-go test-go test-py
 
 test-go:
 	go -C daemon test -race ./...
+
+## scale: run the write + query/retention scale harness into .evidence/artifacts/
+scale: build-go
+	@mkdir -p .evidence/artifacts
+	go -C daemon run ./cmd/scalebench -n 100000 > .evidence/artifacts/scale_write.json
+	@test -x $(PY) || $(MAKE) venv
+	PYTHONPATH=engine $(PY) scripts/scale_query.py --rows 1000000 --json .evidence/artifacts/scale_query.json >/dev/null
+	@echo "wrote .evidence/artifacts/scale_write.json + scale_query.json"
 
 test-py:
 	@test -x $(PYTEST) || $(MAKE) venv

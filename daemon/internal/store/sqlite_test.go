@@ -118,6 +118,9 @@ func TestCapInvariantAcrossReopen(t *testing.T) {
 	if n > 8 {
 		t.Errorf("after reopen count=%d exceeds cap 8", n)
 	}
+	if v, _ := s2.MetaSchemaVersion(); v != fmt.Sprint(SchemaVersion) {
+		t.Errorf("meta schema_version after reopen = %q, want %d", v, SchemaVersion)
+	}
 }
 
 // AC concurrency: a reader on a second connection can SELECT the live DB while a

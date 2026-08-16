@@ -35,29 +35,6 @@ func main() {
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "cged ", log.LstdFlags)
-	if cfg.HostID == "" {
-		if h, err := os.Hostname(); err == nil {
-			cfg.HostID = h
-		}
-	}
-
-	sink, err := store.OpenSQLite(cfg.DBPath, cfg.MaxRows)
-	if err != nil {
-		logger.Fatalf("open store: %v", err)
-	}
-	defer sink.Close()
-
-	// Backend selection: the ONLY place a concrete backend is named. Everything
-	// below sees collector.Collector.
-	var col collector.Collector
-	pol, err := generic.New(cfg)
-	if err != nil {
-		logger.Fatalf("collector: %v", err)
-	}
-	col = pol
-	logger.Printf("capture: generic poll backend, caps=%+v", col.Capabilities())
-
-	p := pipeline.New(cfg, sink, logger)
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -67,7 +44,40 @@ func main() {
 		defer cancel()
 	}
 
-	// pipeline drain loop under its own context so we can flush AFTER the bridge
+	if err := run(rootCtx, cfg, logger); err != nil {
+		logger.Fatalf("cged: %v", err)
+	}
+}
+
+// run wires and drives the daemon until ctx is cancelled, then shuts down cleanly
+// (collector stops, every buffered event is flushed) before returning. Extracted
+// from main so the full lifecycle is testable (AC6).
+func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
+	if cfg.HostID == "" {
+		if h, err := os.Hostname(); err == nil {
+			cfg.HostID = h
+		}
+	}
+
+	sink, err := store.OpenSQLite(cfg.DBPath, cfg.MaxRows)
+	if err != nil {
+		return err
+	}
+	defer sink.Close()
+
+	// Backend selection: the ONLY place a concrete backend is named. Everything
+	// below sees collector.Collector.
+	var col collector.Collector
+	pol, err := generic.New(cfg)
+	if err != nil {
+		return err
+	}
+	col = pol
+	logger.Printf("capture: generic poll backend, caps=%+v", col.Capabilities())
+
+	p := pipeline.New(cfg, sink, logger)
+
+	// Pipeline drain loop under its own context so we can flush AFTER the bridge
 	// has moved every last collected event into the buffer.
 	pctx, pcancel := context.WithCancel(context.Background())
 	pipeDone := make(chan struct{})
@@ -83,24 +93,25 @@ func main() {
 	}()
 
 	// heartbeat: emitted by main (owns liveness), directly into the buffer.
-	go heartbeatLoop(rootCtx, cfg, p)
+	go heartbeatLoop(ctx, cfg, p)
 
 	// collector: on return, close out so the bridge finishes.
 	go func() {
-		if err := col.Start(rootCtx, out); err != nil {
+		if err := col.Start(ctx, out); err != nil {
 			logger.Printf("collector stopped: %v", err)
 		}
 		close(out)
 	}()
 
 	logger.Printf("cged running, writing to %s (Ctrl-C to stop)", cfg.DBPath)
-	<-rootCtx.Done()
+	<-ctx.Done()
 	<-bridgeDone // collector returned and every collected event is buffered
 	pcancel()    // trigger final flush
 	<-pipeDone
 
 	logger.Printf("shutdown: dropped_overflow=%d dropped_write_error=%d",
 		p.DroppedOverflow(), p.DroppedWriteError())
+	return nil
 }
 
 func heartbeatLoop(ctx context.Context, cfg config.Config, p *pipeline.Pipeline) {
