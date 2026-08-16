@@ -5,3 +5,9 @@
 .evidence/*
 !.evidence/baseline/
 !.evidence/baseline/**
+
+# build + runtime artifacts
+/bin/
+*.db
+*.db-wal
+*.db-shm
