@@ -13,6 +13,7 @@
 | **M2** — Ancestry graph + CLI | networkx DAG from ppid (certain edges); `cg tree` / `cg path` | [plans/causegraph-M0-M2.md](plans/causegraph-M0-M2.md) |
 | **M4 query + M5-offline** | resource attribution + `cg why "<question>"` (resolver → traversal → deterministic offline narrator; `query/llm.py` adapter, **no real LLM yet**) | [plans/causegraph-M4-M5.md](plans/causegraph-M4-M5.md) |
 | **M3f + M4 core** | **fsnotify** `file.change` capture (no root) + the first **inferred (<1.0) edge** `file_watch` (a file changed → likely triggered a process); `scoring.py`; precision traversal; `cg why` shows the file cause | [plans/causegraph-M3f-M4.md](plans/causegraph-M3f-M4.md) + [adr/0001](adr/0001-graph-node-types-and-edge-scoring.md) |
+| **M6** — web UI | read-only local viewer: `cg ui` serves a page (vendored cytoscape.js, offline) that renders the causal graph for a pid/question — process vs file nodes, edges coloured by rule+confidence, payload bounded (`max_nodes`); stdlib http.server API bound to 127.0.0.1 | [plans/causegraph-M6.md](plans/causegraph-M6.md) |
 
 ## Left to build
 
@@ -21,7 +22,6 @@
 | **M3-full** — native backends | Real kernel capture: eBPF (Linux), ETW (Windows), EndpointSecurity (macOS) | Linux/Windows to build+test; macOS ES needs an **Apple-approved entitlement** |
 | **M4 remaining rules** | `socket` (IPC), `cron`/temporal, **writer→reader** file edges | needs M3-full's process attribution |
 | **M5-full** — real LLM | a real provider behind `query/llm.py` (currently offline) | none — additive, seam is ready |
-| **M6** — web UI | local server + d3/cytoscape causal tree with confidence on edges | none |
 | **Fleet** — many machines | a remote `Sink` shipping events to a central store keyed by `host_id` | none — seam exists |
 
 ### Smaller enhancements
@@ -39,8 +39,8 @@ gives file/socket events *with the acting process attributed*, which is what mak
 inferred edges (`socket`, writer→reader) worth building. Each milestone shipped behind a seam, so
 this is additive — a new file satisfying `Collector`, nothing downstream changes.
 
-Cheaper wins available anytime (no blockers): **M6 web UI**, **M5-full real LLM**, or **`actor.cwd`
-capture**.
+Cheaper wins available anytime (no blockers): **M5-full real LLM** (a provider behind `query/llm.py`),
+**`actor.cwd` capture** (so file_watch matches relative-path args), or **Fleet** (a remote `Sink`).
 
 When starting: run `make test` (should be green), skim [architecture.md](architecture.md) §3 and §9,
 then write the milestone plan into [`plans/`](plans) before coding.

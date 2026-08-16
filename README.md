@@ -19,6 +19,7 @@ make fixtures       # build the demo databases under test/fixtures/
 ./bin/cged -db /tmp/cg.db -watch "$HOME/somedir" -duration 5s
 ./scripts/cg why "why is the fan loud?" --db /tmp/cg.db
 ./scripts/cg tree <pid> --db /tmp/cg.db     # a process and its descendants
+./scripts/cg ui  --db /tmp/cg.db            # local web viewer at http://127.0.0.1:8765
 ```
 
 ## Documentation
