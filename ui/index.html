@@ -19,17 +19,19 @@
     svg { display: block; }
 
     /* ---- header: minimal, clean ---- */
-    header { display: flex; align-items: center; gap: 16px; height: 56px; padding: 0 18px;
-      background: var(--panel); border-bottom: 1px solid var(--border); position: relative; z-index: 5; }
+    header { display: flex; align-items: center; gap: 16px; height: 54px; padding: 0 18px;
+      background: rgba(18,19,23,.72); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+      border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 rgba(255,255,255,.04);
+      position: relative; z-index: 5; }
     .brand { display: flex; align-items: center; gap: 9px; flex: none; }
     .brand .mark { width: 22px; height: 22px; }
     .brand .name { font-weight: 600; font-size: 14.5px; letter-spacing: -.2px; }
 
     form { flex: 1; min-width: 0; max-width: 640px; }
-    .cmd { display: flex; align-items: center; height: 38px; padding-left: 12px;
-      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-      transition: border-color .15s, box-shadow .15s; }
-    .cmd:focus-within { border-color: rgba(76,148,236,.55); box-shadow: 0 0 0 3px rgba(76,148,236,.14); }
+    .cmd { display: flex; align-items: center; height: 36px; padding-left: 13px;
+      background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); border-radius: 9px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04); transition: border-color .15s, box-shadow .15s; }
+    .cmd:focus-within { border-color: rgba(255,255,255,.22); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 0 3.5px rgba(255,255,255,.055); }
     .cmd .ico { width: 15px; height: 15px; color: var(--muted); flex: none; }
     .cmd input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--text);
       font: inherit; padding: 0 11px; height: 100%; }
@@ -39,11 +41,13 @@
     .selwrap .chev { position: absolute; right: 10px; color: var(--muted); font-size: 9px; pointer-events: none; }
     #minc { appearance: none; -webkit-appearance: none; border: none; background: none; color: var(--text-2);
       font: inherit; outline: none; cursor: pointer; padding: 0 26px 0 12px; height: 36px; }
-    button.go { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-right: 4px; padding: 0 14px;
-      font: inherit; font-weight: 550; font-size: 13px; color: #fff; cursor: pointer; border: none;
-      border-radius: 7px; background: var(--blue); transition: filter .12s; }
-    button.go:hover { filter: brightness(1.08); }
-    button.go .ico { width: 13px; height: 13px; }
+    button.go { display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-right: 4px; padding: 0 15px;
+      font: inherit; font-weight: 550; font-size: 12.5px; color: #ecedef; cursor: pointer;
+      border: 1px solid rgba(255,255,255,.12); border-radius: 7px;
+      background: linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.06));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.09); transition: background .13s, border-color .13s; }
+    button.go:hover { background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.09)); border-color: rgba(255,255,255,.18); }
+    button.go:active { background: rgba(255,255,255,.06); }
 
     .right { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
     .right .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
