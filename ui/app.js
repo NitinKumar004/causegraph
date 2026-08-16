@@ -98,9 +98,11 @@ function render(data) {
   overlay(null);
   const cn = cy.$id(culprit);
   if (cn.nonempty()) { cn.select(); showDetails(cn); }
-  $("count").textContent = `${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}` +
-                           (data.truncated ? " · truncated" : "");
-  $("count").className = data.truncated ? "pill warn" : "pill";
+  const c = $("count");
+  c.style.display = "";
+  c.textContent = `${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}` +
+                  (data.truncated ? " · truncated" : "");
+  c.className = data.truncated ? "chip warn" : "chip";
 }
 
 // --- details panel ---
