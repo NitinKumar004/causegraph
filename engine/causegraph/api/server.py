@@ -50,6 +50,7 @@ def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MA
     if (pid is None) == (q is None):
         return {"error": "pid or q required" if pid is None and q is None
                 else "pid and q are mutually exclusive"}
+    max_nodes = max(1, int(max_nodes))  # a payload always has at least the culprit; avoids anc[-0:]
 
     events = list(reader.read_events(db))
     g = builder.build(events)

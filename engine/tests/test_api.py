@@ -94,6 +94,14 @@ def test_deep_ancestry_core_capped(tmp_path):
     assert len(p["nodes"]) <= 5 and p["truncated"] is True
 
 
+def test_max_nodes_zero_is_clamped(tmp_path):
+    # max_nodes<=0 is clamped to 1 (culprit only); never returns the whole ancestry.
+    events = [_spawn(i, i - 1, i * 10) for i in range(1, 11)]
+    db = _db(tmp_path, events, "clamp.db")
+    p = graph_payload(db, pid=10, max_nodes=0)
+    assert len(p["nodes"]) == 1 and p["truncated"] is True
+
+
 def test_unresolvable_question_errors(why_db):
     # a non-empty question with no resolvable target still returns an error, never raises
     empty_q = graph_payload(why_db, q="")  # empty after strip
