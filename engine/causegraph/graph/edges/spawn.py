@@ -30,6 +30,15 @@ def _parent_live_at(ctx: BuildContext, child: ProcessNode) -> ProcessNode | None
     for p in candidates:
         if p.spawn_ts <= child.spawn_ts and (best is None or p.spawn_ts > best.spawn_ts):
             best = p
+    if best is None and not child.observed_spawn and candidates:
+        # Inferred (pre-existing) child: its spawn_ts is only "first seen at capture
+        # start", so a pre-existing PARENT first sampled a moment later isn't truly
+        # "spawned after" it — ts-ordering is meaningless between two baseline
+        # processes. Fall back to the ppid instance nearest the child's first-seen
+        # time so the real OS process tree still reconstructs (e.g. the recorder
+        # daemon, which samples itself at boot before it first enumerates its own
+        # parent shell). Observed spawns keep the strict live-at-spawn rule.
+        best = min(candidates, key=lambda p: abs(p.spawn_ts - child.spawn_ts))
     return best
 
 

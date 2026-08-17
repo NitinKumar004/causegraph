@@ -23,6 +23,39 @@ def _exit(pid, ppid, ts):
     })
 
 
+def _sample(pid, ppid, ts, exe="/x"):
+    # a resource.sample with no prior spawn -> an INFERRED (pre-existing) node
+    return Event.from_dict({
+        "id": f"r{pid}-{ts}", "ts": ts, "host_id": "h", "kind": "resource.sample",
+        "actor": {"pid": pid, "ppid": ppid, "exe": exe, "args": [], "user": "u"},
+        "metrics": {"cpu_pct": 1.0}, "source": "poll", "confidence": 1.0,
+    })
+
+
+def test_inferred_child_links_to_parent_first_seen_later():
+    # Two pre-existing (inferred) processes: the child (pid 20, ppid 10) is first
+    # sampled a hair BEFORE its parent (pid 10). ts-ordering is meaningless between
+    # baseline processes, so the spawn edge must still form — otherwise the recorder
+    # daemon (which samples itself before enumerating its parent shell) shows up as a
+    # disconnected lone node and clicking it renders an empty one-box graph.
+    events = [_sample(20, 10, 100), _sample(10, 1, 101), _sample(1, 0, 101)]
+    g = builder.build(events)
+    parent10 = next(k for k in g.nodes if k[0] == 10)
+    child20 = next(k for k in g.nodes if k[0] == 20)
+    assert g.has_edge(parent10, child20)         # linked despite child seen first
+    assert g.edges[parent10, child20]["rule"] == "spawn"
+
+
+def test_observed_child_keeps_strict_live_at_spawn():
+    # An OBSERVED spawn must NOT link to a parent that spawned strictly after it —
+    # the relaxed fallback is only for inferred children.
+    events = [_spawn(10, 1, 200), _spawn(20, 10, 100)]  # child 20 spawned before parent 10
+    g = builder.build(events)
+    parent10 = next(k for k in g.nodes if k[0] == 10)
+    child20 = next(k for k in g.nodes if k[0] == 20)
+    assert not g.has_edge(parent10, child20)
+
+
 def test_ppid_edges_and_confidence(graph_events):
     g = builder.build(graph_events)
     # nodes: pids 1,100,200,201,300 -> 5 instances
