@@ -35,6 +35,8 @@ func main() {
 	flag.Int64Var(&cfg.MaxRows, "max-rows", cfg.MaxRows, "events table ring-buffer cap")
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", cfg.HeartbeatInterval, "heartbeat interval")
 	flag.DurationVar(&duration, "duration", 0, "run for this long then exit (0 = until SIGINT)")
+	flag.Float64Var(&cfg.SampleMinCPUPct, "sample-min-cpu", cfg.SampleMinCPUPct, "resource-sample processes with CPU%% >= this (0 = sample ALL processes)")
+	flag.Int64Var(&cfg.SampleMinRSS, "sample-min-rss", cfg.SampleMinRSS, "resource-sample processes with RSS bytes >= this (0 = sample all)")
 	var watch string
 	flag.StringVar(&watch, "watch", "", "comma-separated directories to watch for file changes")
 	flag.Parse()
