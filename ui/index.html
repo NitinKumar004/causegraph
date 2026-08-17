@@ -53,7 +53,7 @@
     .dbchip b { color: var(--text); font-weight: 600; }
 
     /* ===================== body ===================== */
-    main { flex: 1; display: flex; min-height: 0; }
+    main { flex: 1; display: flex; min-height: 0; position: relative; }
     aside.left { width: 300px; flex: none; border-right: 1px solid var(--line); background: var(--panel);
       display: flex; flex-direction: column; min-height: 0; }
     .panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 18px 12px; }
@@ -124,7 +124,17 @@
     .gnode.file .sub { font-size: 10.5px; color: var(--muted); margin: 2px 0 0 35px; }
 
     /* ===================== right selection ===================== */
-    aside.right { width: 320px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 18px 20px 24px; overflow-y: auto; }
+    aside.right { width: 320px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 18px 20px 24px; overflow-y: auto; transition: width .18s ease, padding .18s ease; }
+    main.rcollapsed aside.right { width: 0; padding-left: 0; padding-right: 0; border-left: none; overflow: hidden; }
+    /* collapse tab riding the panel's left edge */
+    #panelToggle { position: absolute; top: 50%; right: 320px; transform: translateY(-50%); z-index: 6;
+      width: 20px; height: 46px; display: flex; align-items: center; justify-content: center;
+      background: var(--panel); color: var(--text-2); border: 1px solid var(--line); border-right: none;
+      border-radius: 8px 0 0 8px; cursor: pointer; transition: right .18s ease, color .12s ease, background .12s ease; }
+    #panelToggle:hover { color: var(--fg); background: var(--panel-2, var(--panel)); }
+    #panelToggle svg { transition: transform .18s ease; }
+    main.rcollapsed #panelToggle { right: 0; }
+    main.rcollapsed #panelToggle svg { transform: rotate(180deg); }
     .sel-name { font-size: 20px; font-weight: 650; margin: 10px 0 6px; letter-spacing: -.3px; }
     .sel-path { color: var(--text-2); font-size: 12.5px; word-break: break-all; margin-bottom: 20px; line-height: 1.5; }
     .kv { display: grid; grid-template-columns: 84px 1fr; gap: 12px 10px; align-items: center; margin-bottom: 20px; }
@@ -222,6 +232,11 @@
       <div class="sel-path sel-empty" id="s-path">Click a process to inspect it.</div>
       <div id="s-body"></div>
     </aside>
+
+    <!-- collapse the inspector to give the graph full width -->
+    <button id="panelToggle" title="Hide inspector" aria-label="Toggle inspector">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
   </main>
 
   <footer>

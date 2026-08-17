@@ -71,6 +71,18 @@ function positionCards() {
 }
 cy.on("pan zoom", positionCards); cy.on("position", "node", positionCards);
 function syncFor(ms) { const end = performance.now() + ms; (function t() { positionCards(); if (performance.now() < end) requestAnimationFrame(t); })(); }
+// Fit the graph but never below a legible zoom floor; center on the culprit when clamped.
+function refit() {
+  if (!cy.elements().nonempty()) return;
+  cy.fit(cy.elements(), 80);
+  const MIN = 0.82;
+  if (cy.zoom() < MIN) {
+    cy.zoom(MIN);
+    const focus = graphData && cy.getElementById(graphData.culprit);
+    if (focus && focus.nonempty()) cy.center(focus); else cy.center();
+  }
+  positionCards();
+}
 
 // marching-ants dashed edges (skip for very large graphs)
 let dash = 0, animOn = false;
@@ -94,19 +106,9 @@ function renderGraph(data) {
   for (const e of data.edges) els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, conf: e.conf, rule: e.rule, col: e.rule === "file_watch" ? "#c99539" : "#5f7796" } });
   cy.elements().remove(); cy.add(els);
   const lay = cy.layout({ name: "breadthfirst", directed: true, padding: 40, spacingFactor: 1.2, avoidOverlap: true, animate: true, animationDuration: 380, animationEasing: "ease-out" });
-  lay.one("layoutstop", () => {
-    // Fit the whole graph, but never zoom out so far the cards become unreadable
-    // (a tall ancestry spine would otherwise shrink 208px cards to ~70px). Below
-    // the floor we keep cards legible and center on the culprit; overflow pans.
-    cy.fit(cy.elements(), 80);
-    const MIN = 0.82;
-    if (cy.zoom() < MIN) {
-      cy.zoom(MIN);
-      const focus = cy.getElementById(data.culprit);
-      if (focus && focus.nonempty()) cy.center(focus); else cy.center();
-    }
-    syncFor(820);
-  });
+  // Fit the whole graph on a legible zoom floor (see refit); a tall ancestry spine
+  // would otherwise shrink 208px cards to unreadable ~70px. Overflow pans.
+  lay.one("layoutstop", () => { refit(); syncFor(820); });
   lay.run(); buildCards(); syncFor(900); animateEdges(); overlay(null);
   $("hcount").textContent = ` · ${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}`;
   $("status").textContent = `observing · ${data.nodes.length} nodes · ${data.edges.length} edges` + (data.truncated ? " · truncated" : "");
@@ -229,5 +231,13 @@ $("cpuMin").addEventListener("input", (e) => { filterCpu = +e.target.value; $("c
 $("memMin").addEventListener("input", (e) => { filterMem = +e.target.value; $("memLbl").textContent = `${filterMem} MiB`; renderList(); });
 $("reset").addEventListener("click", () => { filterCpu = 0; filterMem = 0; filterText = ""; $("cpuMin").value = 0; $("memMin").value = 0; $("query").value = ""; $("cpuLbl").textContent = "0%"; $("memLbl").textContent = "0 MiB"; renderList(); });
 document.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("query").focus(); } });
+// Collapse the inspector to give the graph full width. cytoscape can't detect its
+// container resizing, so resize + refit once the width transition (.18s) settles.
+$("panelToggle").addEventListener("click", () => {
+  const collapsed = document.querySelector("main").classList.toggle("rcollapsed");
+  $("panelToggle").title = collapsed ? "Show inspector" : "Hide inspector";
+  syncFor(500);
+  setTimeout(() => { cy.resize(); refit(); }, 210);
+});
 
 loadAll();
