@@ -27,6 +27,11 @@ let selectedId = null;
 let sortMode = "cpu";
 let filterCpu = 0, filterMem = 0, filterText = "";
 const nodeById = {};     // id -> node meta from the current graph
+let currentPid = null;   // the pid whose family the graph currently shows (for live refresh)
+// auto-refresh: re-poll the DB on a timer, paused while the user is interacting so
+// the view never yanks. autoMs = 0 means off. Cycled via the header "live" button.
+const AUTO_STEPS = [4000, 8000, 15000, 0];  // 4s -> 8s -> 15s -> off -> (loops)
+let autoMs = 4000, autoTimer = 0, refreshing = false, hoverActive = false, panActive = false;
 
 // ================= graph (cytoscape + HTML cards) =================
 const cy = cytoscape({
@@ -119,8 +124,8 @@ function renderGraph(data) {
   $("hcount").textContent = ` · ${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}`;
   $("status").textContent = `observing · ${data.nodes.length} nodes · ${data.edges.length} edges` + (data.truncated ? " · truncated" : "");
 }
-function hoverNode(cyn) { const hi = cyn.closedNeighborhood(); const keep = new Set(hi.nodes().map((x) => x.id())); cy.edges().style("opacity", 0.08); hi.edges().style("opacity", 0.95); for (const id in cards) cards[id].classList.toggle("dim", !keep.has(id)); }
-function unhover() { cy.edges().style("opacity", 0.9); for (const id in cards) cards[id].classList.remove("dim"); }
+function hoverNode(cyn) { hoverActive = true; const hi = cyn.closedNeighborhood(); const keep = new Set(hi.nodes().map((x) => x.id())); cy.edges().style("opacity", 0.08); hi.edges().style("opacity", 0.95); for (const id in cards) cards[id].classList.toggle("dim", !keep.has(id)); }
+function unhover() { hoverActive = false; cy.edges().style("opacity", 0.9); for (const id in cards) cards[id].classList.remove("dim"); }
 cy.on("tap", (e) => { if (e.target === cy) { /* keep selection */ } });
 
 // A process passes the CPU/MEM/name filter — the one predicate both the list and
@@ -198,6 +203,7 @@ function showFile(n) {
 // pick a process: re-centre the graph on its family, then select it
 async function focusPid(pid) {
   overlay("loading");
+  currentPid = pid;  // remember what the graph shows, so live refresh re-polls it
   try {
     const r = await fetch(`/api/graph?pid=${pid}&family=1&min_confidence=${$("minc").value}`);
     const d = await r.json();
@@ -236,7 +242,7 @@ async function loadAll() {
       try {
         const r = await fetch(`/api/graph?pid=${c.pid}&family=1&min_confidence=0.5`);
         const d = await r.json();
-        if (r.ok && !d.error && d.nodes.length > 1) { renderGraph(d); const hit = d.nodes.find((x) => x.pid === c.pid && x.kind === "process"); selectNode(hit ? hit.id : d.culprit); return; }
+        if (r.ok && !d.error && d.nodes.length > 1) { currentPid = c.pid; renderGraph(d); const hit = d.nodes.find((x) => x.pid === c.pid && x.kind === "process"); selectNode(hit ? hit.id : d.culprit); return; }
       } catch (_) {}
     }
     focusPid(cands[0].pid);  // fallback: hottest (may be a lone node)
@@ -283,4 +289,67 @@ window.addEventListener("resize", () => {
   rzT = setTimeout(() => { cy.resize(); refit(); if (window.innerWidth > 660) openNav(false); }, 120);
 });
 
+// ---- live auto-refresh ----
+// panning the canvas counts as "interacting" — don't refresh mid-drag.
+$("cy").addEventListener("pointerdown", () => { panActive = true; });
+window.addEventListener("pointerup", () => { panActive = false; });
+
+// Never refresh mid-interaction, so the view can't jump under the user's hands.
+function busy() {
+  return refreshing || hoverActive || panActive || document.hidden
+    || document.activeElement === $("query")
+    || mainEl.classList.contains("lnav");
+}
+
+// Same node set -> update metrics in place (no relayout, no yank). Topology changed
+// (process died / spawned) -> a full re-render, accepting one re-fit.
+function applyGraphUpdate(d) {
+  const ids = Object.keys(nodeById);
+  const sameSet = graphData && d.nodes.length === ids.length && d.nodes.every((n) => nodeById[n.id]);
+  if (!sameSet) { renderGraph(d); selectNode(selectedId && nodeById[selectedId] ? selectedId : d.culprit); return; }
+  graphData = d;
+  for (const n of d.nodes) {
+    nodeById[n.id] = n;
+    const card = cards[n.id]; if (!card) continue;
+    card.innerHTML = nodeCardHTML(n);
+    card.classList.toggle("hot", n.kind === "process" && isHot(n.peak_cpu_pct));
+  }
+  applyGraphFilter();
+  $("status").textContent = `observing · ${d.nodes.length} nodes · ${d.edges.length} edges` + (d.truncated ? " · truncated" : "");
+  if (selectedId && nodeById[selectedId]) selectNode(selectedId);  // refresh inspector numbers
+}
+
+async function refreshData() {
+  refreshing = true;
+  const sc = $("plist").scrollTop;
+  try {
+    const rl = await fetch("/api/graph?all=1&max_nodes=20000");
+    const dl = await rl.json();
+    if (rl.ok && !dl.error) {
+      allProcs = (dl.nodes || []).filter((n) => n.kind === "process");
+      $("art-sub").textContent = `sqlite · ${allProcs.length} processes${dl.truncated ? "+" : ""}`;
+      renderList();
+    }
+    if (currentPid != null) {
+      const rg = await fetch(`/api/graph?pid=${currentPid}&family=1&min_confidence=${$("minc").value}`);
+      const dg = await rg.json();
+      if (rg.ok && !dg.error) applyGraphUpdate(dg);
+    }
+  } catch (_) { /* transient; next tick retries */ }
+  finally { refreshing = false; $("plist").scrollTop = sc; }
+}
+
+function autoTick() { if (!busy()) refreshData(); }  // skip this beat if mid-interaction
+
+function setAuto(ms) {
+  autoMs = ms;
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = 0; }
+  if (ms > 0) autoTimer = setInterval(autoTick, ms);
+  $("live").textContent = ms > 0 ? `live · ${ms / 1000}s` : "paused";
+  $("live").classList.toggle("on", ms > 0);
+  document.querySelector(".dbchip").classList.toggle("paused", ms === 0);
+}
+$("live").addEventListener("click", () => setAuto(AUTO_STEPS[(AUTO_STEPS.indexOf(autoMs) + 1) % AUTO_STEPS.length]));
+
 loadAll();
+setAuto(autoMs);  // start the live poll (first tick one interval from now)

@@ -54,6 +54,11 @@
     .confbtn .chev { position: absolute; right: 10px; color: var(--muted); font-size: 9px; pointer-events: none; }
     .dbchip { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
     .dbchip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 6px rgba(125,211,252,.8); animation: pulse 2s ease-in-out infinite; }
+    .dbchip.paused .dot { animation: none; background: var(--muted); box-shadow: none; }
+    .livebtn { font: 500 11px ui-monospace, monospace; color: var(--muted); background: rgba(255,255,255,.04); border: 1px solid var(--line-2);
+      border-radius: 8px; padding: 6px 9px; cursor: pointer; white-space: nowrap; transition: color .12s, background .12s, border-color .12s; }
+    .livebtn:hover { color: var(--text-2); background: rgba(255,255,255,.08); }
+    .livebtn.on { color: var(--acc-2); border-color: rgba(125,211,252,.3); background: rgba(125,211,252,.08); }
     .dbchip b { color: var(--text); font-weight: 600; }
 
     /* ===================== body ===================== */
@@ -212,6 +217,7 @@
       .brand .name { display: none; }
       .dbchip b { display: none; }
       #menuBtn { display: flex; }
+      .livebtn { display: none; }
       aside.left { position: absolute; top: 0; left: 0; bottom: 0; z-index: 14; width: min(304px, 88vw);
         border-right: 1px solid var(--line); box-shadow: 20px 0 46px rgba(0,0,0,.55);
         transform: translateX(-100%); transition: transform .2s ease; }
@@ -251,6 +257,7 @@
         </div>
       </div>
     </form>
+    <button id="live" class="livebtn on" title="Auto-refresh — click to change interval">live · 4s</button>
     <div class="dbchip"><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
   </header>
 
