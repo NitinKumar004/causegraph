@@ -205,6 +205,7 @@ async function focusPid(pid) {
     renderGraph(d);
     const hit = d.nodes.find((x) => x.pid === pid && x.kind === "process");
     selectNode(hit ? hit.id : d.culprit);
+    if (window.innerWidth <= 660) openNav(false);  // reveal the graph after picking on a phone
   } catch (e) { setError(`request failed: ${e}`); }
 }
 async function killPid(pid, name) {
@@ -263,6 +264,23 @@ $("panelToggle").addEventListener("click", () => {
   $("panelToggle").title = collapsed ? "Show inspector" : "Hide inspector";
   syncFor(500);
   setTimeout(() => { cy.resize(); refit(); }, 210);
+});
+
+// ---- responsive: process-list drawer + graph refit on resize ----
+const NARROW = 940;                       // below this the inspector is a slide-over
+const mainEl = document.querySelector("main");
+function openNav(on) { mainEl.classList.toggle("lnav", on); $("scrim").classList.toggle("show", on); }
+$("menuBtn").addEventListener("click", () => openNav(!mainEl.classList.contains("lnav")));
+$("scrim").addEventListener("click", () => openNav(false));
+// On narrow screens the inspector floats over the graph — start it hidden so the
+// graph owns the width; the toggle tab pulls it in on demand.
+if (window.innerWidth <= NARROW) mainEl.classList.add("rcollapsed");
+// Keep the graph fitted as the window (or panels) resize. cytoscape can't observe
+// its own container, so drive resize+refit ourselves, debounced to a frame settle.
+let rzT = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(rzT);
+  rzT = setTimeout(() => { cy.resize(); refit(); if (window.innerWidth > 660) openNav(false); }, 120);
 });
 
 loadAll();
