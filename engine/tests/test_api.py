@@ -45,11 +45,6 @@ def test_pid_payload_shape_and_file_cause(filewatch_db):
     assert p["truncated"] is False
 
 
-def test_q_path_resolves(why_db):
-    p = graph_payload(why_db, q="why is the fan loud?")
-    assert p["culprit"] == "p:200:300"  # hottest cpu process
-
-
 def test_show_all_returns_whole_tree(graph_db):
     # graph_db has 5 process instances (pids 1,100,200,201,300) — show_all returns all
     p = graph_payload(graph_db, show_all=True)
@@ -99,8 +94,7 @@ def test_min_confidence_hides_file_cause(filewatch_db):
 
 
 def test_errors_never_raise(tmp_path, graph_db):
-    assert graph_payload(graph_db)["error"] == "pid or q required"
-    assert "mutually exclusive" in graph_payload(graph_db, pid=1, q="x")["error"]
+    assert graph_payload(graph_db)["error"] == "pid required"
     assert "no process with pid 99999" in graph_payload(graph_db, pid=99999)["error"]
     empty = _db(tmp_path, [], "empty.db")
     assert "error" in graph_payload(empty, pid=1)
@@ -138,11 +132,3 @@ def test_max_nodes_zero_is_clamped(tmp_path):
     db = _db(tmp_path, events, "clamp.db")
     p = graph_payload(db, pid=10, max_nodes=0)
     assert len(p["nodes"]) == 1 and p["truncated"] is True
-
-
-def test_unresolvable_question_errors(why_db):
-    # a non-empty question with no resolvable target still returns an error, never raises
-    empty_q = graph_payload(why_db, q="")  # empty after strip
-    assert "error" in empty_q
-    # a question about an absent explicit pid
-    assert "error" in graph_payload(why_db, q="why is pid 424242 slow")

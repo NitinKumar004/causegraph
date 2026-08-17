@@ -1,13 +1,12 @@
-"""cg — the CauseGraph CLI (architecture.md §5.5). M2 commands:
+"""cg — the CauseGraph CLI (architecture.md §5.5). Commands:
 
     cg tree <pid> --db <path>          # the process and its descendants
     cg path <pid> --db <path>          # root-ward ancestry path to <pid>
-    cg why "<question>" --db <path>    # explain why a process is hot / using resources
+    cg ui   --db <path>                # serve the local read-only causal-graph UI
     cg load <jsonl> --db <path>        # dev helper: seed a DB from an events JSONL
 
 The reasoning is pure graph traversal + attribution (traverse.py / attribution.py);
-no model is involved. `cg why` uses an offline deterministic narrator by default
-(query/narrator.py); a real LLM provider would slot in behind query/llm.py.
+no model is involved.
 """
 from __future__ import annotations
 
@@ -19,10 +18,9 @@ from typing import Optional, Sequence
 
 import networkx as nx
 
-from causegraph.graph import attribution, builder, traverse
+from causegraph.graph import builder, traverse
 from causegraph.graph.model import NodeKey
 from causegraph.ingest import reader
-from causegraph.query import llm, resolver
 from causegraph.schema import Event
 
 
@@ -57,40 +55,6 @@ def cmd_path(args: argparse.Namespace) -> int:
         return 1
     for depth, k in enumerate(traverse.ancestry_path(g, key)):
         print("  " * depth + _node_line(g, k))
-    return 0
-
-
-def _summary(g: nx.DiGraph, key: NodeKey) -> dict:
-    n = g.nodes[key]
-    return {"pid": n["pid"], "exe": n["exe"] or "?", "user": n["user"] or "?"}
-
-
-def cmd_why(args: argparse.Namespace) -> int:
-    events = list(reader.read_events(args.db))
-    g = builder.build(events)
-    attribution.annotate(g, events)  # same event list — one read, no re-scan
-
-    res = resolver.resolve(g, args.question)
-    if not res.ok:
-        print(res.message, file=sys.stderr)
-        return 1
-
-    min_conf = 0.0 if args.all else args.min_confidence
-    causes_raw = traverse.causes(g, res.culprit, min_confidence=min_conf)
-    if res.value is None and not causes_raw:
-        print(f"no attribution or file-cause data for pid {g.nodes[res.culprit]['pid']}",
-              file=sys.stderr)
-        return 1
-
-    try:
-        narrator = llm.get_narrator(args.provider)
-    except ValueError as e:
-        print(str(e), file=sys.stderr)
-        return 1
-    causes = [{"path": g.nodes[c]["path"], "confidence": conf} for c, conf in causes_raw]
-    path = [_summary(g, k) for k in traverse.ancestry_path(g, res.culprit)]
-    culprit = _summary(g, res.culprit)
-    print(narrator.explain(path, culprit, res.metric, res.value, res.assumed, causes=causes))
     return 0
 
 
@@ -138,15 +102,6 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("pid", type=int)
     pa.add_argument("--db", default="causegraph.db", help="events database path")
     pa.set_defaults(func=cmd_path)
-
-    wy = sub.add_parser("why", help="explain why a process is hot/using resources")
-    wy.add_argument("question", help='e.g. "why is the fan loud?" or "what is using memory"')
-    wy.add_argument("--db", default="causegraph.db", help="events database path")
-    wy.add_argument("--provider", default=None, help="narrator provider (default: local offline)")
-    wy.add_argument("--min-confidence", type=float, default=0.5, dest="min_confidence",
-                    help="hide inferred causes below this confidence (default 0.5)")
-    wy.add_argument("--all", action="store_true", help="show all causes, even low-confidence")
-    wy.set_defaults(func=cmd_why)
 
     ui = sub.add_parser("ui", help="serve a local read-only web UI for the causal graph")
     ui.add_argument("--db", default="causegraph.db", help="events database path")

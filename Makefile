@@ -51,11 +51,10 @@ test-py:
 ## fixtures: build demo DBs from the committed fixtures (clean rebuild — cg load
 ## appends, so stale DBs must be removed first to stay reproducible)
 fixtures: build
-	rm -f test/fixtures/graph.db test/fixtures/why.db test/fixtures/fw.db
+	rm -f test/fixtures/graph.db test/fixtures/fw.db
 	./scripts/cg load test/fixtures/graph_events.jsonl --db test/fixtures/graph.db
-	./scripts/cg load test/fixtures/why_events.jsonl --db test/fixtures/why.db
 	./scripts/cg load test/fixtures/filewatch_events.jsonl --db test/fixtures/fw.db
-	@echo "wrote test/fixtures/graph.db + why.db + fw.db"
+	@echo "wrote test/fixtures/graph.db + fw.db"
 
 clean:
 	rm -rf bin *.db *.db-wal *.db-shm test/fixtures/graph.db

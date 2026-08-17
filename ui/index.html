@@ -52,9 +52,6 @@
     .confbtn select { appearance: none; -webkit-appearance: none; height: 36px; padding: 0 26px 0 12px; border: 1px solid var(--line-2);
       background: rgba(255,255,255,.045); color: var(--text-2); border-radius: 9px; font: inherit; outline: none; cursor: pointer; }
     .confbtn .chev { position: absolute; right: 10px; color: var(--muted); font-size: 9px; pointer-events: none; }
-    .trace { height: 36px; padding: 0 16px; font: inherit; font-weight: 600; color: var(--acc-2); cursor: pointer;
-      border: 1px solid rgba(125,211,252,.35); border-radius: 9px; background: linear-gradient(180deg, rgba(125,211,252,.16), rgba(125,211,252,.08)); }
-    .trace:hover { background: linear-gradient(180deg, rgba(125,211,252,.24), rgba(125,211,252,.12)); }
     .dbchip { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
     .dbchip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 6px rgba(125,211,252,.8); animation: pulse 2s ease-in-out infinite; }
     .dbchip b { color: var(--text); font-weight: 600; }
@@ -198,14 +195,13 @@
       <div class="cmd">
         <div class="search">
           <svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="query" type="text" placeholder='Filter by name or pid, or ask "why is the fan loud?"'>
+          <input id="query" type="text" placeholder="Filter by name or pid">
           <span class="kbd">⌘K</span>
         </div>
         <div class="confbtn">
           <select id="minc"><option value="0.5" selected>conf ≥ 0.5</option><option value="0.0">show all</option><option value="0.7">conf ≥ 0.7</option><option value="0.9">conf ≥ 0.9</option></select>
           <span class="chev">▾</span>
         </div>
-        <button class="trace" type="submit">Trace</button>
       </div>
     </form>
     <div class="dbchip"><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
@@ -236,7 +232,7 @@
       <div id="cy"></div>
       <div id="nodes"></div>
       <div class="overlay" id="loading"><div class="spinner"></div><p>building the graph…</p></div>
-      <div class="overlay" id="empty"><h2>Trace a cause</h2><p>Pick a process or ask a question.</p></div>
+      <div class="overlay" id="empty"><h2>Trace a cause</h2><p>Pick a process to see its causal graph.</p></div>
       <div class="overlay" id="error"><div class="toast" id="error-msg"></div></div>
     </div>
 

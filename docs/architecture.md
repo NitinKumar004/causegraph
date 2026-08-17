@@ -12,7 +12,7 @@ This document is the end-to-end plan: design principles, the cross-platform stra
 
 Every operating system hands you *different* raw signals (eBPF on Linux, EndpointSecurity on macOS, ETW on Windows). If any of that OS-specific shape leaks past the capture layer, your graph code, your heuristics, and your query layer all become three-headed and unmaintainable.
 
-So the capture layer's only job is to translate whatever the OS gives it into **one canonical `Event` schema**. Everything above that line — storage, graph building, edge inference, natural-language query — sees only canonical events and never knows or cares which OS produced them. This single decision is what makes the whole system portable, extensible, and testable.
+So the capture layer's only job is to translate whatever the OS gives it into **one canonical `Event` schema**. Everything above that line — storage, graph building, edge inference, the query UI — sees only canonical events and never knows or cares which OS produced them. This single decision is what makes the whole system portable, extensible, and testable.
 
 The corollary: **the canonical event schema is the most important artifact in the repo.** Design it before you write a collector.
 
@@ -48,7 +48,7 @@ The corollary: **the canonical event schema is the most important artifact in th
 │         ▲                                                         │
 │    Edge-inference rules (plugins, each scored by confidence)     │
 │         ▼                                                         │
-│    Query:  resolver → backward traversal → narrator → LLM        │
+│    Query:  pick a process → backward graph traversal (no LLM)    │
 └───────────────────────────────────────────────────────────────┘
               │
               ▼
@@ -201,10 +201,6 @@ causegraph/
 │       │       ├── socket.py           # matching socket write/read → IPC edge
 │       │       ├── cron.py             # scheduled job → known child process
 │       │       └── resource.py         # attribute temp/fan spikes to a process
-│       ├── query/
-│       │   ├── resolver.py             # English question → entry node in the graph
-│       │   ├── narrator.py             # causal path → plain-English explanation
-│       │   └── llm.py                  # LLM adapter — swappable provider, TRANSLATOR only
 │       └── api/
 │           └── server.py               # local HTTP server for the web UI
 │
@@ -268,19 +264,21 @@ Adding a new causal heuristic = adding one file in `graph/edges/`. This is the e
 
 > **The single hardest problem, name it now:** correlation vs causation. Two things near in time is not cause. The naive version drowns the user in false links, exactly the noise trap that kills tools like this. Build for *precision over recall*: better to show three edges you're sure of than thirty you're guessing at. Every edge carries its confidence; the traversal prefers high-confidence paths; low-confidence edges are shown only on request.
 
-### 5.4 Query layer (Python + LLM)
+### 5.4 Query layer
 
-Three steps, and the boundary between them and the LLM is sacred:
-
-1. **Resolver** — map the English question to a starting node. "fan loud" → the most recent high-temperature / fan resource event.
-2. **Traversal** — walk causal edges *backward* from that node toward roots, following highest-confidence paths. **This is where the reasoning happens, and it's pure graph traversal you fully control** — deterministic, testable, no model involved.
-3. **Narrator** — collapse the resulting path into plain English.
-
-The **LLM is a translator, never the reasoner.** It turns English into a graph entry point, and a structured causal path into a readable sentence. It does not decide what caused what — your graph does. That separation is the entire reason the answers are trustworthy instead of hallucinated. `llm.py` is an adapter so the provider is swappable and the rest of the system doesn't depend on any one API.
+> **Removed (graph-only product).** An earlier design had a natural-language query layer
+> — a resolver (English question → entry node), backward traversal, and an LLM/narrator
+> to phrase the answer. That layer was dropped: for this tool the **graph itself is the
+> answer**, and an LLM added surface area without adding insight. Querying is now direct —
+> pick a process (or the hottest one) and read its causal neighborhood. The reasoning that
+> matters still lives entirely in **graph traversal** (`traverse.py`), deterministic and
+> model-free.
 
 ### 5.5 Interface
 
-Start with a **CLI** — `cg why "fan is loud"` printing a causal tree is a completely legitimate v1 and skips a mountain of UI work. When you want visuals, the daemon serves a small local page and you render the causal tree with `d3` or `cytoscape.js`. A native menu-bar app is a *polish* step, not a starting point.
+A **CLI** (`cg tree` / `cg path`) prints the causal tree; `cg ui` serves a small local
+read-only page that renders the graph with vendored `cytoscape.js`. A native menu-bar app
+would be a *polish* step, not a starting point.
 
 ---
 
@@ -292,7 +290,6 @@ Everything you'll want to extend is already an interface, so growth is additive:
 |---|---|---|
 | A new OS, or new capture tech on an OS | one file satisfying `Collector` | downstream sees only canonical events |
 | A new causal heuristic | one `EdgeRule` plugin | the builder just runs every registered rule |
-| A different LLM provider | one `llm.py` adapter | query layer depends on the adapter, not the API |
 | Fleet / central storage | one `Sink` implementation | the daemon already writes through the Sink interface |
 | A new event type | a `kind` in the schema + rules that use it | schema is the single source of truth |
 
@@ -329,8 +326,7 @@ The whole point of the architecture above is that value arrives at *every* miles
 - **M2 — Process-ancestry tree.** Python builds the certain-edge graph (ppid only) and a CLI prints an ancestry tree for any process. *First real end-to-end; already useful weekly.*
 - **M3 — One native backend.** Pick your daily-driver OS. Real event stream + file events at native fidelity behind the same `Collector` interface. *Nothing downstream changes.*
 - **M4 — Inferred edges + scoring.** The `file_watch`, `socket`, and `resource` rules; confidence scoring; precision-first traversal. *The intellectual core lands.*
-- **M5 — Natural-language query.** Resolver → backward traversal → narrator → LLM adapter. *The "why is my fan loud" moment works.*
-- **M6 — Web UI.** Local server + d3/cytoscape causal tree, with confidence shown on edges.
+- **M6 — Web UI.** Local server + cytoscape causal graph, with confidence shown on edges. *(An M5 natural-language/LLM query layer was considered and dropped — the graph is the answer.)*
 - **M7 — Port native backends** to the remaining OSes. Each is now an isolated task behind the interface, done at each platform's own pace (macOS last, given its approval gate).
 - **Later — Fleet mode** via a remote `Sink`.
 
@@ -349,8 +345,7 @@ The whole point of the architecture above is that value arrives at *every* miles
 | Store abstraction | **`Sink` interface** | Local now, remote/fleet later with one implementation |
 | Graph + heuristics | **Python + networkx, in-memory at query time** | Fast iteration on the part you'll rewrite most; zero-ops |
 | Edge inference | **Plugin per `EdgeRule`** | New causal insight = new file, never a refactor |
-| NL query | **LLM adapter, translator-only** | Graph reasons; model only phrases → trustworthy answers |
-| Interface | **CLI first → local web (d3/cytoscape)** | Skip GUI work until the logic is proven |
+| Interface | **CLI + local web (cytoscape)** | Direct graph navigation; no NL/LLM layer |
 
 ---
 

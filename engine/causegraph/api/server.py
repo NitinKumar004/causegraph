@@ -14,7 +14,6 @@ from urllib.parse import parse_qs, urlparse
 from causegraph.graph import attribution, builder, traverse
 from causegraph.graph.model import is_process_key
 from causegraph.ingest import reader
-from causegraph.query import resolver
 
 _UI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))), "ui")
@@ -99,7 +98,7 @@ def _family_payload(g, culprit, min_confidence, max_nodes) -> dict:
     return p
 
 
-def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False) -> dict:
+def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False) -> dict:
     """Return the bounded causal neighborhood of a culprit as {nodes, edges,
     truncated}, or {"error": msg}. With show_all, return the whole process tree.
     Bound (max_nodes) prevents serializing an unbounded graph."""
@@ -111,19 +110,11 @@ def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MA
     if show_all:
         return _all_payload(g, max_nodes)
 
-    if (pid is None) == (q is None):
-        return {"error": "pid or q required" if pid is None and q is None
-                else "pid and q are mutually exclusive"}
-
-    if pid is not None:
-        culprit = traverse.latest_instance(g, pid)
-        if culprit is None:
-            return {"error": f"no process with pid {pid} in the capture window"}
-    else:
-        res = resolver.resolve(g, q)
-        if not res.ok:
-            return {"error": res.message}
-        culprit = res.culprit
+    if pid is None:
+        return {"error": "pid required"}
+    culprit = traverse.latest_instance(g, pid)
+    if culprit is None:
+        return {"error": f"no process with pid {pid} in the capture window"}
 
     if family:
         return _family_payload(g, culprit, min_confidence, max_nodes)
@@ -231,8 +222,6 @@ def make_handler(db: str):
                     kw["family"] = qs["family"][0] not in ("0", "false", "no")
                 if "pid" in qs:
                     kw["pid"] = int(qs["pid"][0])
-                if "q" in qs:
-                    kw["q"] = qs["q"][0]
                 if "min_confidence" in qs:
                     kw["min_confidence"] = float(qs["min_confidence"][0])
                 if "max_nodes" in qs:

@@ -27,18 +27,18 @@ def _sample(pid, ts, cpu=None, rss=None):
         "metrics": m, "source": "poll", "confidence": 1.0})
 
 
-def test_peak_and_rank(why_events):
-    g = builder.build(why_events)
-    attribution.annotate(g, why_events)
+def test_peak_and_rank(resource_events):
+    g = builder.build(resource_events)
+    attribution.annotate(g, resource_events)
     top_cpu = attribution.rank_by(g, CPU)[0]
     assert g.nodes[top_cpu]["pid"] == 200 and attribution.peak(g, top_cpu, CPU) == 92.5
     top_rss = attribution.rank_by(g, RSS)[0]
     assert g.nodes[top_rss]["pid"] == 300 and attribution.peak(g, top_rss, RSS) == 2147483648
 
 
-def test_none_sorts_last_no_typeerror(why_events):
-    g = builder.build(why_events)
-    attribution.annotate(g, why_events)
+def test_none_sorts_last_no_typeerror(resource_events):
+    g = builder.build(resource_events)
+    attribution.annotate(g, resource_events)
     ranked = attribution.rank_by(g, RSS)  # only pid 300 has rss; rest None
     assert g.nodes[ranked[0]]["pid"] == 300
     assert all(g.nodes[k]["peak_rss_bytes"] is None for k in ranked[1:])

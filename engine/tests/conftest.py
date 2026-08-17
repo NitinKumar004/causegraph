@@ -39,19 +39,9 @@ def graph_db(tmp_path, graph_events) -> str:
 
 
 @pytest.fixture
-def why_events() -> list[Event]:
-    return load_jsonl("why_events.jsonl")
-
-
-@pytest.fixture
-def why_db(tmp_path, why_events) -> str:
-    db = str(tmp_path / "why.db")
-    conn = sqlite3.connect(db)
-    try:
-        reader.write_events(conn, why_events)
-    finally:
-        conn.close()
-    return db
+def resource_events() -> list[Event]:
+    # a small process tree carrying CPU/RSS resource.samples — for attribution tests
+    return load_jsonl("resource_events.jsonl")
 
 
 @pytest.fixture

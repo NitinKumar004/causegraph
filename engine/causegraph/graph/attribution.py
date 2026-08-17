@@ -1,7 +1,7 @@
 """Resource attribution: annotate each process-instance node with the peak CPU/RSS
 observed for it, matching resource.sample events to the correct instance by its
-[spawn_ts, exit_ts) window (pid-reuse safe). This powers the resolver's "which
-process is responsible for the spike" choice. It is NOT the doc's edges/resource.py
+[spawn_ts, exit_ts) window (pid-reuse safe). This powers the "which process is
+responsible for the spike" ranking the UI surfaces. It is NOT the doc's edges/resource.py
 EdgeRule (which would draw a cross-process edge) — that is deferred to M4-full.
 
 Input is the SAME event list the builder consumed (one read, no DB re-scan).

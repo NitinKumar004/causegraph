@@ -15,9 +15,8 @@ Cross-language artifacts (event schema AND the store table DDL) each need a drif
 Generated code is committed and gofmt'd by the generator; the drift gate is `gen.py --check` (in-memory byte compare). — causegraph-M0-M2
 
 Do not build a confidence scorer/precision filter until a rule actually emits a <1.0 edge; with one certain edge type there is nothing to score — defer, don't ship dead code. — causegraph-M4-M5
-Keep the LLM/narrator a translator only: resolver picks the entry node, traversal reasons, narrator/llm phrase; the narrator emits ALL user-facing text (incl. caveats), the resolver prints none. — causegraph-M4-M5
-Only treat 'pid N'/'process N' as an explicit pid in a free-text question; a bare number is not a pid. — causegraph-M4-M5
-A `cg why` (or any query) fixture is separate from the tree/path fixture so adding resource.samples can't shift the ancestry goldens. — causegraph-M4-M5
+An attribution/resource-sample fixture is separate from the tree/path fixture so adding resource.samples can't shift the ancestry goldens. — causegraph-M4-M5
+(The natural-language query + LLM/narrator/resolver layer was later removed — the graph is the product; no `cg why`, no `?q=`.) — causegraph
 
 Give every node-key type a single constructor that normalizes (e.g. model.file_key does normpath); two call sites feeding raw vs normalized forms of the same key silently desync edges from nodes. — causegraph-M3f-M4
 When multiple collectors feed one channel, fan them in with a WaitGroup and close the channel exactly once after Wait() — never let each producer close it (double-close panic). — causegraph-M3f-M4

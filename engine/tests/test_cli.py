@@ -9,16 +9,16 @@ def test_help_lists_m2_subcommands(capsys):
         main(["--help"])
     assert ei.value.code == 0
     out = capsys.readouterr().out
-    for token in ("cg", "tree", "path", "load"):
+    for token in ("cg", "tree", "path", "ui", "load"):
         assert token in out, f"help missing {token!r}"
 
 
-def test_why_is_now_a_subcommand(capsys):
-    """`cg why` landed in M5-offline; help lists it alongside tree/path/load."""
+def test_no_why_subcommand(capsys):
+    """The natural-language `cg why` was removed — invoking it is an argparse error."""
     with pytest.raises(SystemExit) as ei:
-        main(["--help"])
-    assert ei.value.code == 0
-    assert "why" in capsys.readouterr().out
+        main(["why", "why is the fan loud?", "--db", "ignored.db"])
+    assert ei.value.code == 2  # invalid choice
+    assert "invalid choice: 'why'" in capsys.readouterr().err
 
 
 def test_rejects_non_integer_pid(capsys):

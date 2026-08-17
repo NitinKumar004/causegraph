@@ -1,5 +1,5 @@
-"""Metric keys shared by the graph (attribution) and query (narrator) layers.
-A neutral home so the phrasing layer never imports the graph package for a label.
+"""Metric keys used by the attribution layer. A neutral home so callers never
+import the graph package just for a label.
 """
 CPU = "cpu"
 RSS = "rss"

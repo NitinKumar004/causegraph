@@ -242,10 +242,13 @@ async function loadAll() {
   } catch (_) { overlay("empty"); }
 }
 
+// Search is a pure filter. Enter focuses the top match: a number -> that pid;
+// text -> the highest-ranked process currently matching the filter.
 $("f").addEventListener("submit", (e) => {
   e.preventDefault(); const v = $("query").value.trim(); if (!v) return;
-  if (/^\d+$/.test(v)) focusPid(parseInt(v, 10));
-  else fetch(`/api/graph?q=${encodeURIComponent(v)}&family=1&min_confidence=${$("minc").value}`).then((r) => r.json()).then((d) => { if (d.error) setError(d.error); else { renderGraph(d); selectNode(d.culprit); } });
+  if (/^\d+$/.test(v)) { focusPid(parseInt(v, 10)); return; }
+  const top = allProcs.filter(matchesFilter).sort((a, b) => (b.peak_cpu_pct || 0) - (a.peak_cpu_pct || 0))[0];
+  if (top) focusPid(top.pid);
 });
 $("query").addEventListener("input", (e) => { filterText = e.target.value.trim(); renderList(); applyGraphFilter(); });
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; sortMode = b.dataset.sort; [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b)); renderList(); });
