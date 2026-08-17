@@ -6,13 +6,16 @@ const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, (c) => ({ "&":
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "?";
 
 // ---- visual helpers ----
-const BADGE = ["#494571", "#3d5578", "#3a5f57", "#5c4560", "#5c5238", "#454b57", "#5c3f47", "#3f5566"];
-function badgeColor(name) { let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return BADGE[h % BADGE.length]; }
+// Monochrome by design: tiles are neutral slate (no per-process hue), red is
+// reserved for hot CPU (>=90%) and Kill only; everything else is slate.
+const HOT = 90;
 function abbrev(name) {
   const parts = name.replace(/\.[a-z0-9]+$/i, "").replace(/[^A-Za-z0-9]+/g, " ").trim().split(/(?<=[a-z])(?=[A-Z])|\s+/).filter(Boolean);
   return (parts.length >= 2 ? parts[0][0] + parts[1][0] : (name.replace(/[^A-Za-z0-9]/g, "") + "?").slice(0, 2)).toLowerCase();
 }
-function cpuColor(c) { c = c || 0; return c >= 75 ? "#ef6b66" : c >= 25 ? "#e0a83c" : c >= 10 ? "#6f93bf" : "#74787f"; }
+function isHot(c) { return (c || 0) >= HOT; }
+function cpuColor(c) { return isHot(c) ? "#ff7b72" : "#8a93a6"; }
+function barFor(c) { return isHot(c) ? "linear-gradient(90deg,#f87171,#fb923c)" : "rgba(154,163,178,.45)"; }
 function humanBytes(n) { if (n == null) return "—"; let v = n, i = 0; const u = ["B", "KiB", "MiB", "GiB", "TiB"]; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`; }
 function mib(n) { return n == null ? 0 : n / (1024 * 1024); }
 function fmtTime(ns) { if (!ns) return "—"; const d = new Date(ns / 1e6); return d.toTimeString().slice(0, 8); }
@@ -31,8 +34,8 @@ const cy = cytoscape({
   style: [
     { selector: "node", style: { "width": "data(w)", "height": "data(h)", "shape": "round-rectangle", "background-opacity": 0, "border-width": 0, "events": "no" } },
     { selector: "edge", style: {
-        "curve-style": "bezier", "width": 1.6, "line-color": "data(col)", "opacity": 0.9,
-        "line-style": "dashed", "line-dash-pattern": [5, 6], "line-dash-offset": 0 } },
+        "curve-style": "bezier", "width": 1.5, "line-color": "data(col)", "opacity": 0.9,
+        "line-style": "dashed", "line-dash-pattern": [3, 10], "line-dash-offset": 0 } },
   ],
 });
 const layer = $("nodes");
@@ -45,25 +48,25 @@ function nodeCardHTML(n) {
       <div style="flex:1;min-width:0"><div class="nm">${esc(nm)}</div><div class="sub">file</div></div></div>`;
   }
   const cpu = n.peak_cpu_pct;
-  return `<div class="r1"><span class="badge" style="background:${badgeColor(nm)}">${esc(abbrev(nm))}</span>
+  return `<div class="r1"><span class="badge">${esc(abbrev(nm))}</span>
       <span class="nm">${esc(nm)}</span><span class="sdot"></span>
       <span class="pc" style="color:${cpuColor(cpu)}">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</span></div>
       <div class="pid">pid ${n.pid}</div>
-      <div class="bar"><i style="width:${Math.min(100, cpu || 0)}%;background:${cpuColor(cpu)}"></i></div>`;
+      <div class="bar"><i style="width:${Math.max(3, Math.min(100, cpu || 0))}%;background:${barFor(cpu)}"></i></div>`;
 }
 function buildCards() {
   layer.innerHTML = ""; cards = {};
   cy.nodes().forEach((cyn) => {
     const n = cyn.data("meta");
     const div = document.createElement("div");
-    div.className = "gnode" + (n.kind === "file" ? " file" : "") + (n.id === graphData.culprit ? " hot" : "");
+    div.className = "gnode" + (n.kind === "file" ? " file" : "") + (n.kind === "process" && isHot(n.peak_cpu_pct) ? " hot" : "");
     div.innerHTML = nodeCardHTML(n);
     div.addEventListener("click", (e) => { e.stopPropagation(); selectNode(n.id); });
     div.addEventListener("mouseenter", () => hoverNode(cyn));
     div.addEventListener("mouseleave", unhover);
     layer.appendChild(div); cards[n.id] = div;
   });
-  positionCards();
+  positionCards(); applyGraphFilter();
 }
 function positionCards() {
   const z = cy.zoom();
@@ -100,10 +103,10 @@ function renderGraph(data) {
   const els = [];
   for (const n of data.nodes) {
     nodeById[n.id] = n;
-    const w = n.kind === "file" ? 178 : 208, h = n.kind === "file" ? 52 : 78;
+    const w = n.kind === "file" ? 190 : 208, h = n.kind === "file" ? 50 : 78;
     els.push({ data: { id: n.id, meta: n, w, h } });
   }
-  for (const e of data.edges) els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, conf: e.conf, rule: e.rule, col: e.rule === "file_watch" ? "#c99539" : "#5f7796" } });
+  for (const e of data.edges) els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, conf: e.conf, rule: e.rule, col: e.rule === "file_watch" ? "rgba(154,163,178,.6)" : "rgba(125,211,252,.6)" } });
   cy.elements().remove(); cy.add(els);
   const lay = cy.layout({ name: "breadthfirst", directed: true, padding: 40, spacingFactor: 1.2, avoidOverlap: true, animate: true, animationDuration: 380, animationEasing: "ease-out" });
   // Fit the whole graph on a legible zoom floor (see refit); a tall ancestry spine
@@ -117,10 +120,26 @@ function hoverNode(cyn) { const hi = cyn.closedNeighborhood(); const keep = new 
 function unhover() { cy.edges().style("opacity", 0.9); for (const id in cards) cards[id].classList.remove("dim"); }
 cy.on("tap", (e) => { if (e.target === cy) { /* keep selection */ } });
 
+// A process passes the CPU/MEM/name filter — the one predicate both the list and
+// the graph obey, so sliding a filter dims the same nodes in both places.
+function matchesFilter(n) {
+  if ((n.peak_cpu_pct || 0) < filterCpu || mib(n.peak_rss_bytes) < filterMem) return false;
+  if (filterText) { const t = filterText.toLowerCase(); return base(n.exe).toLowerCase().includes(t) || String(n.pid).includes(t); }
+  return true;
+}
+// Dim graph nodes below the filter instead of removing them, so the tree keeps its
+// shape while the eye is drawn to what passes (file nodes are never filtered).
+function applyGraphFilter() {
+  for (const id in cards) {
+    const n = nodeById[id];
+    const on = !n || n.kind !== "process" || matchesFilter(n);
+    cards[id].classList.toggle("fdim", !on);
+  }
+}
+
 // ================= process list (left) =================
 function renderList() {
-  let rows = allProcs.filter((n) => (n.peak_cpu_pct || 0) >= filterCpu && mib(n.peak_rss_bytes) >= filterMem);
-  if (filterText) { const t = filterText.toLowerCase(); rows = rows.filter((n) => base(n.exe).toLowerCase().includes(t) || String(n.pid).includes(t)); }
+  let rows = allProcs.filter(matchesFilter);
   const total = allProcs.length;
   rows.sort((a, b) => sortMode === "az" ? base(a.exe).localeCompare(base(b.exe)) : sortMode === "mem" ? (b.peak_rss_bytes || 0) - (a.peak_rss_bytes || 0) : (b.peak_cpu_pct || 0) - (a.peak_cpu_pct || 0));
   $("pcount").textContent = `${rows.length} of ${total}`;
@@ -129,7 +148,7 @@ function renderList() {
     const nm = base(n.exe), cpu = n.peak_cpu_pct;
     const div = document.createElement("div");
     div.className = "prow" + (n.id === selectedId ? " sel" : "");
-    div.innerHTML = `<span class="badge" style="background:${badgeColor(nm)}">${esc(abbrev(nm))}</span>
+    div.innerHTML = `<span class="badge">${esc(abbrev(nm))}</span>
       <div class="info"><div class="nm">${esc(nm)}</div><div class="pid">${n.pid}</div></div>
       <div class="met"><div class="cpu" style="color:${cpuColor(cpu)}">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</div><div class="mem">${humanBytes(n.peak_rss_bytes)}</div></div>`;
     div.addEventListener("click", () => focusPid(n.pid));
@@ -159,10 +178,10 @@ function selectNode(id) {
       <dt>peak RSS</dt><dd>${humanBytes(n.peak_rss_bytes)}</dd>
     </dl>
     <div class="cpurow"><span class="lbl">peak CPU</span><span class="val" style="color:${cpuColor(cpu)}">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</span></div>
-    <div class="cpubar"><i style="width:${pct}%"></i></div>
+    <div class="cpubar"><i style="width:${Math.max(3, pct)}%;background:${barFor(cpu)};box-shadow:0 0 10px ${isHot(cpu) ? "rgba(255,107,107,.5)" : "rgba(125,211,252,.3)"}"></i></div>
     <div class="kick" style="margin-top:4px">Open files</div>
     <div class="files">${files.length ? files.map((f) => `<span class="fpill">${esc(base(f))}</span>`).join("") : '<span class="hint" style="color:var(--muted)">none captured</span>'}</div>
-    <div class="actions"><button id="inspect">Inspect</button><button class="kill" id="kill">Kill −9</button></div>`;
+    <div class="actions"><button class="inspect" id="inspect">Inspect</button><button class="kill" id="kill">Kill −9</button></div>`;
   $("inspect").onclick = () => focusPid(n.pid);
   $("kill").onclick = () => killPid(n.pid, base(n.exe));
 }
@@ -170,7 +189,7 @@ function showFile(n) {
   $("s-name").textContent = base(n.path); $("s-path").className = "sel-path"; $("s-path").textContent = n.path || "";
   const conf = (graphData.edges.find((e) => e.rule === "file_watch" && e.source === n.id) || {}).conf;
   $("s-body").innerHTML = `<span class="fpill">file</span>
-    <p style="color:var(--muted);margin-top:14px;line-height:1.6">A change to this file likely triggered the connected process${conf != null ? ` — confidence <b style="color:var(--amber)">${conf.toFixed(2)}</b>` : ""}.</p>`;
+    <p style="color:var(--muted);margin-top:14px;line-height:1.6">A change to this file likely triggered the connected process${conf != null ? ` — confidence <b style="color:var(--acc-2)">${conf.toFixed(2)}</b>` : ""}.</p>`;
 }
 
 // pick a process: re-centre the graph on its family, then select it
@@ -225,11 +244,11 @@ $("f").addEventListener("submit", (e) => {
   if (/^\d+$/.test(v)) focusPid(parseInt(v, 10));
   else fetch(`/api/graph?q=${encodeURIComponent(v)}&family=1&min_confidence=${$("minc").value}`).then((r) => r.json()).then((d) => { if (d.error) setError(d.error); else { renderGraph(d); selectNode(d.culprit); } });
 });
-$("query").addEventListener("input", (e) => { filterText = e.target.value.trim(); renderList(); });
+$("query").addEventListener("input", (e) => { filterText = e.target.value.trim(); renderList(); applyGraphFilter(); });
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; sortMode = b.dataset.sort; [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b)); renderList(); });
-$("cpuMin").addEventListener("input", (e) => { filterCpu = +e.target.value; $("cpuLbl").textContent = `${filterCpu}%`; renderList(); });
-$("memMin").addEventListener("input", (e) => { filterMem = +e.target.value; $("memLbl").textContent = `${filterMem} MiB`; renderList(); });
-$("reset").addEventListener("click", () => { filterCpu = 0; filterMem = 0; filterText = ""; $("cpuMin").value = 0; $("memMin").value = 0; $("query").value = ""; $("cpuLbl").textContent = "0%"; $("memLbl").textContent = "0 MiB"; renderList(); });
+$("cpuMin").addEventListener("input", (e) => { filterCpu = +e.target.value; $("cpuLbl").textContent = `${filterCpu}%`; renderList(); applyGraphFilter(); });
+$("memMin").addEventListener("input", (e) => { filterMem = +e.target.value; $("memLbl").textContent = `${filterMem} MiB`; renderList(); applyGraphFilter(); });
+$("reset").addEventListener("click", () => { filterCpu = 0; filterMem = 0; filterText = ""; $("cpuMin").value = 0; $("memMin").value = 0; $("query").value = ""; $("cpuLbl").textContent = "0%"; $("memLbl").textContent = "0 MiB"; renderList(); applyGraphFilter(); });
 document.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("query").focus(); } });
 // Collapse the inspector to give the graph full width. cytoscape can't detect its
 // container resizing, so resize + refit once the width transition (.18s) settles.
