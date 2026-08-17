@@ -46,8 +46,10 @@ def test_server_routes_bind_and_teardown(filewatch_db):
         assert _get_status(port, "/api/graph?all=1&max_nodes=lots") == 400  # bad int max_nodes
         assert _get(port, "/api/graph?all=1&max_nodes=1")[0] == 200  # max_nodes honored, not ignored
         assert _get_status(port, "/nope") == 404                # unknown path
-        s, ctype, body = _get(port, "/api/meta")                # db name for the header chip
-        assert s == 200 and json.loads(body)["db"].endswith(".db")
+        s, ctype, body = _get(port, "/api/meta")                # db name + newest ts for the live/frozen chip
+        meta = json.loads(body)
+        assert s == 200 and meta["db"].endswith(".db")
+        assert isinstance(meta["latest_ts"], int) and meta["latest_ts"] > 0  # fixture has events
     finally:
         httpd.shutdown()
         t.join(timeout=2)

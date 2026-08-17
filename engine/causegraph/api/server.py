@@ -8,12 +8,28 @@ from __future__ import annotations
 import json
 import os
 import signal
+import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from causegraph.graph import attribution, builder, traverse
 from causegraph.graph.model import is_process_key
 from causegraph.ingest import reader
+
+
+def _latest_ts(db: str):
+    """The newest event timestamp in the store, or None if unreadable/empty. The UI
+    polls this to tell a live capture (ts advancing) from a frozen one (a recorder
+    that has stopped writing) — a cheap MAX(ts), no full graph rebuild."""
+    try:
+        conn = sqlite3.connect(db)
+        try:
+            row = conn.execute("SELECT MAX(ts) FROM events").fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
 
 _UI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))), "ui")
@@ -186,7 +202,7 @@ def make_handler(db: str):
             if path == "/api/graph":
                 return self._api(parse_qs(parsed.query))
             if path == "/api/meta":
-                return self._json(200, {"db": os.path.basename(db)})
+                return self._json(200, {"db": os.path.basename(db), "latest_ts": _latest_ts(db)})
             return self._send(404, b"not found", "text/plain")
 
         def do_POST(self):

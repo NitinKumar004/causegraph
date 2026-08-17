@@ -32,6 +32,9 @@ let currentPid = null;   // the pid whose family the graph currently shows (for 
 // the view never yanks. autoMs = 0 means off. Cycled via the header "live" button.
 const AUTO_STEPS = [4000, 8000, 15000, 0];  // 4s -> 8s -> 15s -> off -> (loops)
 let autoMs = 4000, autoTimer = 0, refreshing = false, hoverActive = false, panActive = false;
+// staleness: if the newest event ts stops advancing for 2 polls, the recorder has
+// stopped writing — say "frozen" instead of pretending to be live.
+let lastTs = null, staleCount = 0, frozen = false;
 
 // ================= graph (cytoscape + HTML cards) =================
 const cy = cytoscape({
@@ -226,7 +229,7 @@ async function killPid(pid, name) {
 
 // ================= boot + controls =================
 async function loadAll() {
-  try { const m = await (await fetch("/api/meta")).json(); if (m.db) { $("dbname").textContent = m.db; $("art-db").textContent = m.db; } } catch (_) {}
+  try { const m = await (await fetch("/api/meta")).json(); if (m.db) { $("dbname").textContent = m.db; $("art-db").textContent = m.db; } if (m.latest_ts != null) lastTs = m.latest_ts; } catch (_) {}
   try {
     const r = await fetch("/api/graph?all=1&max_nodes=20000");  // the list wants every process, not the graph cap
     const d = await r.json();
@@ -335,19 +338,40 @@ async function refreshData() {
       const dg = await rg.json();
       if (rg.ok && !dg.error) applyGraphUpdate(dg);
     }
+    try { noteTs((await (await fetch("/api/meta")).json()).latest_ts); } catch (_) {}
   } catch (_) { /* transient; next tick retries */ }
   finally { refreshing = false; $("plist").scrollTop = sc; }
 }
 
 function autoTick() { if (!busy()) refreshData(); }  // skip this beat if mid-interaction
 
+// Did the newest event move since last poll? If not for 2 polls, the recorder stopped.
+function noteTs(ts) {
+  if (ts != null && (lastTs == null || ts > lastTs)) { lastTs = ts; staleCount = 0; frozen = false; }
+  else if (++staleCount >= 2) frozen = true;
+  updateLiveLabel();
+}
+function updateLiveLabel() {
+  const chip = document.querySelector(".dbchip"), live = $("live");
+  if (autoMs === 0) {
+    live.textContent = "paused"; live.className = "livebtn"; live.title = "Auto-refresh off — click to resume";
+    chip.classList.add("paused"); chip.classList.remove("frozen");
+  } else if (frozen) {
+    live.textContent = "frozen"; live.className = "livebtn frozen";
+    live.title = "Polling, but no recorder is writing — data isn't updating. Run cged to capture live.";
+    chip.classList.add("frozen"); chip.classList.remove("paused");
+  } else {
+    live.textContent = `live · ${autoMs / 1000}s`; live.className = "livebtn on"; live.title = "Live — click to change interval";
+    chip.classList.remove("paused", "frozen");
+  }
+}
+
 function setAuto(ms) {
+  const wasOff = autoMs === 0;
   autoMs = ms;
   if (autoTimer) { clearInterval(autoTimer); autoTimer = 0; }
-  if (ms > 0) autoTimer = setInterval(autoTick, ms);
-  $("live").textContent = ms > 0 ? `live · ${ms / 1000}s` : "paused";
-  $("live").classList.toggle("on", ms > 0);
-  document.querySelector(".dbchip").classList.toggle("paused", ms === 0);
+  if (ms > 0) { autoTimer = setInterval(autoTick, ms); if (wasOff) { staleCount = 0; frozen = false; } }  // fresh chance on resume
+  updateLiveLabel();
 }
 $("live").addEventListener("click", () => setAuto(AUTO_STEPS[(AUTO_STEPS.indexOf(autoMs) + 1) % AUTO_STEPS.length]));
 
