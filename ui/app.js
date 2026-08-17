@@ -154,8 +154,13 @@ async function init() {
   try { const m = await (await fetch("/api/meta")).json(); if (m.db) $("dbname").textContent = m.db; } catch (_) {}
   try {
     overlay("loading");
-    const res = await fetch("/api/graph?q=cpu&min_confidence=0.5");
-    const data = await res.json();
+    // whole system tree by default; fall back to the hottest process
+    let res = await fetch("/api/graph?all=1");
+    let data = await res.json();
+    if (!(res.ok && !data.error && data.nodes && data.nodes.length)) {
+      res = await fetch("/api/graph?q=cpu&min_confidence=0.5");
+      data = await res.json();
+    }
     if (res.ok && !data.error && data.nodes && data.nodes.length) render(data); else overlay("empty");
   } catch (_) { overlay("empty"); }
 }

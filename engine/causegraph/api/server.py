@@ -42,18 +42,35 @@ def _node_json(g, key) -> dict:
             "label": os.path.basename(n["path"]) or n["path"], "path": n["path"]}
 
 
-def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES) -> dict:
-    """Return the bounded causal neighborhood of a culprit as {nodes, edges,
-    truncated}, or {"error": msg}. Bound (max_nodes) prevents a near-root pid or a
-    high-fan-out culprit from serializing the whole graph."""
-    if (pid is None) == (q is None):
-        return {"error": "pid or q required" if pid is None and q is None
-                else "pid and q are mutually exclusive"}
-    max_nodes = max(1, int(max_nodes))  # a payload always has at least the culprit; avoids anc[-0:]
+def _all_payload(g, max_nodes: int) -> dict:
+    """The whole captured process tree: all process nodes (sorted by pid so the
+    root/launchd comes first), capped at max_nodes, with the edges among them."""
+    procs = sorted((k for k in g.nodes() if is_process_key(k)),
+                   key=lambda k: (g.nodes[k]["pid"], k[1]))
+    truncated = len(procs) > max_nodes
+    sel = procs[:max_nodes]
+    ids = {_node_id(k) for k in sel}
+    nodes = [_node_json(g, k) for k in sel]
+    edges = [{"source": _node_id(u), "target": _node_id(v), "rule": d.get("rule"), "confidence": d.get("confidence")}
+             for u, v, d in g.edges(data=True) if _node_id(u) in ids and _node_id(v) in ids]
+    return {"culprit": _node_id(sel[0]) if sel else None, "nodes": nodes, "edges": edges, "truncated": truncated}
 
+
+def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False) -> dict:
+    """Return the bounded causal neighborhood of a culprit as {nodes, edges,
+    truncated}, or {"error": msg}. With show_all, return the whole process tree.
+    Bound (max_nodes) prevents serializing an unbounded graph."""
+    max_nodes = max(1, int(max_nodes))  # a payload always has at least the culprit; avoids anc[-0:]
     events = list(reader.read_events(db))
     g = builder.build(events)
     attribution.annotate(g, events)
+
+    if show_all:
+        return _all_payload(g, max_nodes)
+
+    if (pid is None) == (q is None):
+        return {"error": "pid or q required" if pid is None and q is None
+                else "pid and q are mutually exclusive"}
 
     if pid is not None:
         culprit = traverse.latest_instance(g, pid)
@@ -138,6 +155,8 @@ def make_handler(db: str):
         def _api(self, qs):
             kw = {}
             try:
+                if "all" in qs:
+                    kw["show_all"] = qs["all"][0] not in ("0", "false", "no")
                 if "pid" in qs:
                     kw["pid"] = int(qs["pid"][0])
                 if "q" in qs:

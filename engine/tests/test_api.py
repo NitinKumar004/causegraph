@@ -49,6 +49,23 @@ def test_q_path_resolves(why_db):
     assert p["culprit"] == "p:200:300"  # hottest cpu process
 
 
+def test_show_all_returns_whole_tree(graph_db):
+    # graph_db has 5 process instances (pids 1,100,200,201,300) — show_all returns all
+    p = graph_payload(graph_db, show_all=True)
+    assert "error" not in p
+    pids = sorted(n["pid"] for n in p["nodes"])
+    assert pids == [1, 100, 200, 201, 300]
+    assert p["culprit"] == "p:1:100"  # lowest pid first (root)
+    assert p["truncated"] is False
+
+
+def test_show_all_capped(tmp_path):
+    events = [_spawn(1, 0, 5)] + [_spawn(1000 + i, 1, 10 + i) for i in range(30)]
+    db = _db(tmp_path, events, "big.db")
+    p = graph_payload(db, show_all=True, max_nodes=10)
+    assert len(p["nodes"]) == 10 and p["truncated"] is True
+
+
 def test_no_duplicate_culprit(graph_db):
     p = graph_payload(graph_db, pid=100)
     ids = [n["id"] for n in p["nodes"]]
