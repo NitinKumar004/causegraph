@@ -6,182 +6,233 @@
   <title>CauseGraph</title>
   <style>
     :root {
-      --bg: #0c0d10; --panel: #101216; --surface: #16181d; --surface-2: #1c1f25;
-      --border: rgba(255,255,255,.08); --border-2: rgba(255,255,255,.13);
-      --text: #eef0f3; --text-2: #a9adb5; --muted: #6f727a;
-      --blue: #4c94ec; --amber: #d9a441; --good: #4ba869; --hot: #e0625d;
+      --bg: #0a0a0c; --panel: #0e0f12; --panel-2: #131419; --card: #16181d; --card-2: #1b1e24;
+      --line: rgba(255,255,255,.07); --line-2: rgba(255,255,255,.12); --line-3: rgba(255,255,255,.2);
+      --text: #edeef1; --text-2: #a7abb3; --muted: #74787f; --dim: #565a61;
+      --blue: #5a9cf0; --teal: #46b39a; --amber: #e0a83c; --green: #4ba869; --red: #ef6b66; --purple: #9a8ad6;
       color-scheme: dark;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
-    body { font: 13.5px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text);
+    body { font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text);
       background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
     svg { display: block; }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.14); }
+    .kick { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.1px; color: var(--muted); }
 
-    /* ---- header: minimal, clean ---- */
-    header { display: flex; align-items: center; gap: 16px; height: 54px; padding: 0 18px;
-      background: rgba(18,19,23,.72); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
-      border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 rgba(255,255,255,.04);
-      position: relative; z-index: 5; }
-    .brand { display: flex; align-items: center; gap: 9px; flex: none; }
+    /* ===================== header ===================== */
+    header { display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px 0 14px;
+      background: linear-gradient(180deg, #121317, #0d0e11); border-bottom: 1px solid var(--line); position: relative; z-index: 20; }
+    .lights { display: flex; gap: 8px; margin-right: 4px; }
+    .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+    .lights .r { background: #ec6a5e; } .lights .y { background: #f4bf4f; } .lights .g { background: #61c554; }
+    .brand { display: flex; align-items: center; gap: 9px; }
     .brand .mark { width: 22px; height: 22px; }
-    .brand .name { font-weight: 600; font-size: 14.5px; letter-spacing: -.2px; }
+    .brand .name { font-weight: 650; font-size: 14.5px; letter-spacing: -.2px; }
 
-    form { flex: 1; min-width: 0; max-width: 640px; }
-    .cmd { display: flex; align-items: center; height: 36px; padding-left: 13px;
-      background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); border-radius: 9px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04); transition: border-color .15s, box-shadow .15s; }
-    .cmd:focus-within { border-color: rgba(255,255,255,.22); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 0 3.5px rgba(255,255,255,.055); }
-    .cmd .ico { width: 15px; height: 15px; color: var(--muted); flex: none; }
-    .cmd input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--text);
-      font: inherit; padding: 0 11px; height: 100%; }
-    .cmd input::placeholder { color: var(--muted); }
-    .cmd .div { width: 1px; height: 20px; background: var(--border); }
-    .selwrap { position: relative; display: flex; align-items: center; }
-    .selwrap .chev { position: absolute; right: 10px; color: var(--muted); font-size: 9px; pointer-events: none; }
-    #minc { appearance: none; -webkit-appearance: none; border: none; background: none; color: var(--text-2);
-      font: inherit; outline: none; cursor: pointer; padding: 0 26px 0 12px; height: 36px; }
-    button.go { display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-right: 4px; padding: 0 15px;
-      font: inherit; font-weight: 550; font-size: 12.5px; color: #ecedef; cursor: pointer;
-      border: 1px solid rgba(255,255,255,.12); border-radius: 7px;
-      background: linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.06));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.09); transition: background .13s, border-color .13s; }
-    button.go:hover { background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.09)); border-color: rgba(255,255,255,.18); }
-    button.go:active { background: rgba(255,255,255,.06); }
+    form { flex: 1; display: flex; justify-content: center; }
+    .cmd { display: flex; align-items: center; gap: 8px; }
+    .search { display: flex; align-items: center; height: 36px; width: 560px; max-width: 46vw; padding: 0 10px 0 12px;
+      background: rgba(255,255,255,.045); border: 1px solid var(--line-2); border-radius: 10px; transition: border-color .15s, box-shadow .15s; }
+    .search:focus-within { border-color: var(--line-3); box-shadow: 0 0 0 3px rgba(255,255,255,.05); }
+    .search .mag { width: 14px; height: 14px; color: var(--muted); flex: none; }
+    .search input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--text); font: inherit; padding: 0 10px; height: 100%; }
+    .search input::placeholder { color: var(--muted); }
+    .kbd { font: 11px/1 ui-monospace, monospace; color: var(--muted); background: rgba(255,255,255,.06); border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 5px; }
+    .confbtn { position: relative; display: flex; align-items: center; }
+    .confbtn select { appearance: none; -webkit-appearance: none; height: 36px; padding: 0 26px 0 12px; border: 1px solid var(--line-2);
+      background: rgba(255,255,255,.045); color: var(--text-2); border-radius: 9px; font: inherit; outline: none; cursor: pointer; }
+    .confbtn .chev { position: absolute; right: 10px; color: var(--muted); font-size: 9px; pointer-events: none; }
+    .trace { height: 36px; padding: 0 16px; font: inherit; font-weight: 600; color: var(--text); cursor: pointer;
+      border: 1px solid var(--line-2); border-radius: 9px; background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.045)); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+    .trace:hover { background: linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.07)); }
+    .dbchip { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .dbchip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px rgba(75,168,105,.8); }
+    .dbchip b { color: var(--text); font-weight: 600; }
 
-    .right { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
-    .right .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
-    .right b { color: var(--text-2); font-weight: 550; }
-    #count.warn { color: var(--amber); }
+    /* ===================== body ===================== */
+    main { flex: 1; display: flex; min-height: 0; }
+    aside.left { width: 300px; flex: none; border-right: 1px solid var(--line); background: var(--panel);
+      display: flex; flex-direction: column; min-height: 0; }
+    .panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 18px 12px; }
+    .panel-head .count { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
-    /* ---- main ---- */
-    main { flex: 1; display: flex; min-height: 0; position: relative; }
-    .canvas { flex: 1; min-width: 0; position: relative; }
-    #cy { position: absolute; inset: 0; background-color: #0a0b0e;
-      background-image: linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
-      background-size: 28px 28px; }
+    /* filter card */
+    .filters { margin: 0 14px 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+    .tabs { display: flex; gap: 3px; padding: 3px; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 14px; }
+    .tabs button { flex: 1; height: 28px; border: none; background: none; color: var(--text-2); font: inherit; font-weight: 600; font-size: 12px; border-radius: 7px; cursor: pointer; }
+    .tabs button.on { background: rgba(255,255,255,.09); color: var(--text); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+    .frow { margin-bottom: 12px; }
+    .frow label { display: block; color: var(--text-2); font-size: 12px; margin-bottom: 7px; }
+    .frow label b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 999px; background: rgba(255,255,255,.1); outline: none; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%; background: var(--blue); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+    input[type=range].mem::-webkit-slider-thumb { background: var(--amber); }
+    .reset { display: inline-block; margin-top: 2px; color: var(--muted); font-size: 12px; cursor: pointer; }
+    .reset:hover { color: var(--text-2); }
 
-    /* HTML node cards overlaid on the graph (premium rich-text nodes) */
+    /* process list */
+    .plist { flex: 1; overflow-y: auto; padding: 4px 10px 16px; }
+    .prow { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 10px; cursor: pointer; position: relative; }
+    .prow:hover { background: rgba(255,255,255,.03); }
+    .prow.sel { background: rgba(255,255,255,.055); }
+    .prow.sel::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 3px; background: var(--blue); }
+    .badge { width: 34px; height: 34px; flex: none; border-radius: 9px; display: flex; align-items: center; justify-content: center;
+      font: 600 12px/1 ui-monospace, monospace; letter-spacing: .5px; color: #fff; text-transform: lowercase; }
+    .prow .info { flex: 1; min-width: 0; }
+    .prow .nm { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .prow .pid { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .prow .met { text-align: right; flex: none; }
+    .prow .cpu { font-weight: 700; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .prow .mem { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .artifacts { padding: 6px 14px 16px; border-top: 1px solid var(--line); }
+    .artifacts .kick { padding: 8px 4px; }
+    .arow { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 10px; }
+    .arow .badge { background: rgba(224,168,60,.16); color: var(--amber); }
+
+    /* ===================== center graph ===================== */
+    .center { flex: 1; min-width: 0; position: relative; }
+    #cy { position: absolute; inset: 0; background-color: #08090b;
+      background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,.028) 1px, transparent 0); background-size: 26px 26px; }
     #nodes { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
-    .gnode { position: absolute; left: 0; top: 0; width: 156px; height: 48px; box-sizing: border-box;
-      display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 13px;
-      background: linear-gradient(180deg, #23262e, #181b21); border: 1px solid #30343d; border-radius: 11px;
-      box-shadow: 0 10px 24px -12px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
-      pointer-events: auto; cursor: pointer; will-change: transform;
-      transition: border-color .13s, box-shadow .13s, opacity .13s, background .13s; }
-    .gnode:hover { border-color: #474d58; background: linear-gradient(180deg, #262a33, #1b1e25); }
-    .gnode .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .gnode .ic { width: 8px; height: 8px; border-radius: 2.5px; flex: none; }
-    .gnode .ic.p { background: #6d7787; }
-    .gnode .ic.f { border-radius: 50%; background: #8c7b58; }
-    .gnode .name { font-weight: 600; font-size: 12.5px; letter-spacing: -.1px; color: #edeff2;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .gnode .pid { font-size: 10px; color: #7f858f; margin-left: 16px; font-variant-numeric: tabular-nums; letter-spacing: .2px; }
-    .gnode.culprit { border-color: #59606c;
-      box-shadow: 0 10px 26px -12px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.07), inset 0 1px 0 rgba(255,255,255,.06); }
-    .gnode.sel { border-color: #79818d; }
-    .gnode.dim { opacity: .26; }
 
-    .legend { position: absolute; left: 16px; bottom: 16px; z-index: 3; display: flex; gap: 16px;
-      padding: 9px 13px; background: rgba(16,18,22,.8); backdrop-filter: blur(10px);
-      border: 1px solid var(--border); border-radius: 9px; font-size: 12px; color: var(--text-2); }
-    .legend .row { display: flex; align-items: center; gap: 7px; }
-    .legend .sw { width: 11px; height: 11px; border-radius: 3px; }
-    .legend .sw.round { border-radius: 50%; }
-    .legend .ln { width: 16px; border-top: 2px solid #7f858e; }
-    .legend .ln.dash { border-top: 2px dashed #7f858e; }
+    /* node card (process) */
+    .gnode { position: absolute; left: 0; top: 0; width: 208px; height: 78px; box-sizing: border-box; pointer-events: auto; cursor: pointer; will-change: transform;
+      background: linear-gradient(180deg, #191c22, #14161b); border: 1px solid var(--line-2); border-radius: 13px; padding: 10px 12px 11px;
+      box-shadow: 0 12px 28px -14px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.05); transition: border-color .13s, box-shadow .13s, opacity .13s; }
+    .gnode:hover { border-color: var(--line-3); }
+    .gnode .r1 { display: flex; align-items: center; gap: 9px; }
+    .gnode .badge { width: 26px; height: 26px; border-radius: 8px; font-size: 11px; }
+    .gnode .nm { flex: 1; min-width: 0; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gnode .sdot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: none; box-shadow: 0 0 5px rgba(75,168,105,.8); }
+    .gnode .pc { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+    .gnode .pid { font-size: 10.5px; color: var(--muted); margin: 3px 0 8px 35px; font-variant-numeric: tabular-nums; }
+    .gnode .bar { height: 4px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .gnode .bar > i { display: block; height: 100%; border-radius: 999px; }
+    .gnode.sel { border-color: var(--line-3); box-shadow: 0 14px 34px -14px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.06); }
+    .gnode.hot { border-color: rgba(239,107,102,.5); box-shadow: 0 0 0 1px rgba(239,107,102,.35), 0 18px 42px -14px rgba(239,107,102,.28), inset 0 1px 0 rgba(255,255,255,.05); }
+    .gnode.dim { opacity: .28; }
+    /* file node = pill */
+    .gnode.file { width: 178px; height: 52px; display: flex; flex-direction: column; justify-content: center;
+      border-radius: 12px; background: linear-gradient(180deg, #221d12, #1a160e); border-color: rgba(224,168,60,.32); }
+    .gnode.file .r1 { align-items: center; }
+    .gnode.file .badge { background: rgba(224,168,60,.16); color: var(--amber); }
+    .gnode.file .pid { display: none; }
+    .gnode.file .bar { display: none; }
+    .gnode.file .sub { font-size: 10.5px; color: var(--muted); margin: 2px 0 0 35px; }
 
-    .overlay { position: absolute; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center;
-      flex-direction: column; gap: 13px; text-align: center; padding: 24px; pointer-events: none; }
+    /* ===================== right selection ===================== */
+    aside.right { width: 320px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 18px 20px 24px; overflow-y: auto; }
+    .sel-name { font-size: 20px; font-weight: 650; margin: 10px 0 6px; letter-spacing: -.3px; }
+    .sel-path { color: var(--text-2); font-size: 12.5px; word-break: break-all; margin-bottom: 20px; line-height: 1.5; }
+    .kv { display: grid; grid-template-columns: 84px 1fr; gap: 12px 10px; align-items: center; margin-bottom: 20px; }
+    .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .cpurow { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+    .cpurow .lbl { color: var(--muted); } .cpurow .val { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .cpubar { height: 7px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; margin-bottom: 22px; }
+    .cpubar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #4ba869, #e0a83c 55%, #ef6b66); }
+    .files { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 26px; }
+    .fpill { font: 12px/1 ui-monospace, monospace; color: var(--text-2); background: var(--card); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 11px; }
+    .actions { display: flex; gap: 10px; }
+    .actions button { flex: 1; height: 42px; font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); color: var(--text); }
+    .actions button:hover { background: var(--card-2); }
+    .actions .kill { color: #f2938e; border-color: rgba(239,107,102,.35); background: rgba(239,107,102,.08); }
+    .actions .kill:hover { background: rgba(239,107,102,.15); }
+    .sel-empty { color: var(--muted); margin-top: 8px; }
+
+    /* ===================== footer ===================== */
+    footer { height: 40px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 18px;
+      border-top: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 12px; }
+    .legend { display: flex; gap: 18px; }
+    .legend .l { display: flex; align-items: center; gap: 7px; }
+    .legend .sw { width: 12px; height: 11px; border-radius: 3px; } .legend .sw.round { border-radius: 50%; }
+    .legend .ln { width: 18px; border-top: 2px solid #6a7180; } .legend .ln.dash { border-top: 2px dashed var(--amber); }
+
+    /* overlays */
+    .overlay { position: absolute; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 24px; pointer-events: none; }
     .overlay.show { display: flex; }
-    .overlay .art { width: 84px; height: 84px; opacity: .85; }
-    .overlay h2 { margin: 2px 0 0; font-size: 16px; font-weight: 600; }
-    .overlay p { margin: 0; color: var(--muted); max-width: 28rem; }
-    .spinner { width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid var(--border-2); border-top-color: var(--blue); animation: spin .8s linear infinite; }
+    .spinner { width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid var(--line-2); border-top-color: var(--blue); animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .toast { color: #ffd9d7; background: rgba(224,98,93,.13); border: 1px solid rgba(224,98,93,.4); padding: 9px 14px; border-radius: 9px; }
-
-    /* ---- details ---- */
-    aside { width: 300px; flex: 0 0 300px; border-left: 1px solid var(--border); background: var(--panel); padding: 18px; overflow-y: auto; }
-    aside .kicker { font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
-    aside h3 { margin: 6px 0 3px; font-size: 15px; word-break: break-word; }
-    aside .sub { color: var(--text-2); font-size: 12.5px; margin-bottom: 16px; word-break: break-all; }
-    .kv { display: grid; grid-template-columns: 90px 1fr; gap: 9px 10px; align-items: center; }
-    .kv dt { color: var(--muted); font-size: 12px; }
-    .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
-    .meter { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
-    .meter > span { display: block; height: 100%; border-radius: 999px; }
-    .tag2 { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
-    .hint { color: var(--muted); font-size: 12.5px; }
-    .divider { height: 1px; background: var(--border); margin: 16px 0; }
-    code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+    .overlay h2 { margin: 0; font-size: 16px; } .overlay p { margin: 0; color: var(--muted); max-width: 26rem; }
+    .toast { color: #ffd9d7; background: rgba(239,107,102,.13); border: 1px solid rgba(239,107,102,.4); padding: 9px 14px; border-radius: 9px; }
   </style>
 </head>
 <body>
   <header>
+    <div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
     <div class="brand">
       <svg class="mark" viewBox="0 0 32 32" fill="none">
-        <path d="M9 9 L23 23 M9 9 L9 23" stroke="#7f8794" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="9" cy="9" r="3.6" fill="#4c94ec"/><circle cx="9" cy="23" r="3" fill="#d9a441"/><circle cx="23" cy="23" r="3.3" fill="#c9cdd4"/>
+        <path d="M9 9 L23 23 M9 9 L9 23" stroke="#8a92a0" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="9" cy="9" r="3.6" fill="#5a9cf0"/><circle cx="9" cy="23" r="3" fill="#e0a83c"/><circle cx="23" cy="23" r="3.3" fill="#c9cdd4"/>
       </svg>
       <span class="name">CauseGraph</span>
     </div>
-
     <form id="f">
       <div class="cmd">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="query" type="text" placeholder='Trace a pid, or ask "why is the fan loud?"'>
-        <div class="div"></div>
-        <div class="selwrap">
-          <select id="minc" title="Hide inferred causes below this confidence">
-            <option value="0.5" selected>conf ≥ 0.5</option><option value="0.0">show all</option>
-            <option value="0.7">conf ≥ 0.7</option><option value="0.9">conf ≥ 0.9</option>
-          </select>
+        <div class="search">
+          <svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="query" type="text" placeholder='Filter by name or pid, or ask "why is the fan loud?"'>
+          <span class="kbd">⌘K</span>
+        </div>
+        <div class="confbtn">
+          <select id="minc"><option value="0.5" selected>conf ≥ 0.5</option><option value="0.0">show all</option><option value="0.7">conf ≥ 0.7</option><option value="0.9">conf ≥ 0.9</option></select>
           <span class="chev">▾</span>
         </div>
-        <button class="go" type="submit">Trace</button>
+        <button class="trace" type="submit">Trace</button>
       </div>
     </form>
-
-    <div class="right"><span class="dot"></span><b id="dbname">db</b><span id="count"></span></div>
+    <div class="dbchip"><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
   </header>
 
   <main>
-    <div class="canvas">
-    <div id="cy"></div>
-    <div id="nodes"></div>
-    <div class="legend">
-      <div class="row"><span class="sw" style="background:#5a6474"></span>process</div>
-      <div class="row"><span class="sw round" style="background:#6f6350"></span>file</div>
-      <div class="row"><span class="ln"></span>spawned</div>
-      <div class="row"><span class="ln dash"></span>file&nbsp;→&nbsp;process</div>
+    <!-- LEFT -->
+    <aside class="left">
+      <div class="panel-head"><span class="kick">Processes</span><span class="count" id="pcount"></span></div>
+      <div class="filters">
+        <div class="tabs" id="tabs">
+          <button data-sort="cpu" class="on">CPU</button><button data-sort="mem">MEM</button><button data-sort="az">A–Z</button>
+        </div>
+        <div class="frow"><label>CPU ≥ <b id="cpuLbl">0%</b></label><input id="cpuMin" type="range" min="0" max="100" value="0"></div>
+        <div class="frow"><label>MEM ≥ <b id="memLbl">0 MiB</b></label><input id="memMin" class="mem" type="range" min="0" max="2000" value="0"></div>
+        <span class="reset" id="reset">Reset filters</span>
+      </div>
+      <div class="plist" id="plist"></div>
+      <div class="artifacts">
+        <div class="kick">Artifacts</div>
+        <div class="arow"><span class="badge"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg></span>
+          <div class="info"><div class="nm" id="art-db">db</div><div class="pid" id="art-sub">sqlite</div></div></div>
+      </div>
+    </aside>
+
+    <!-- CENTER -->
+    <div class="center">
+      <div id="cy"></div>
+      <div id="nodes"></div>
+      <div class="overlay" id="loading"><div class="spinner"></div><p>building the graph…</p></div>
+      <div class="overlay" id="empty"><h2>Trace a cause</h2><p>Pick a process or ask a question.</p></div>
+      <div class="overlay" id="error"><div class="toast" id="error-msg"></div></div>
     </div>
 
-    <div class="overlay show" id="empty">
-      <svg class="art" viewBox="0 0 120 120" fill="none">
-        <line x1="60" y1="32" x2="60" y2="60" stroke="#4c94ec" stroke-width="2.5" opacity=".45"/>
-        <line x1="60" y1="60" x2="36" y2="88" stroke="#565a63" stroke-width="2.5" opacity=".45"/>
-        <line x1="60" y1="60" x2="84" y2="88" stroke="#d9a441" stroke-width="2.5" stroke-dasharray="5 5" opacity=".55"/>
-        <rect x="46" y="20" width="28" height="22" rx="6" fill="#181b21" stroke="#4c94ec" stroke-width="1.6"/>
-        <rect x="22" y="78" width="28" height="20" rx="6" fill="#181b21" stroke="#565a63" stroke-width="1.6"/>
-        <circle cx="84" cy="88" r="10" fill="#221d13" stroke="#d9a441" stroke-width="1.6"/>
-      </svg>
-      <h2>Trace a cause</h2>
-      <p>Enter a pid or ask a question. CauseGraph draws the process ancestry and the files that likely triggered it.</p>
-    </div>
-    <div class="overlay" id="loading"><div class="spinner"></div><p>building the graph…</p></div>
-    <div class="overlay" id="error"><div class="toast" id="error-msg"></div></div>
-
-    </div><!-- /canvas -->
-
-    <aside id="panel">
-      <div class="kicker">selection</div>
-      <h3 id="p-title">Nothing selected</h3>
-      <div class="sub" id="p-sub">Click a node to inspect it.</div>
-      <div id="p-body" class="hint">Run a trace, then click any process or file to see its details.</div>
+    <!-- RIGHT -->
+    <aside class="right" id="panel">
+      <div class="kick">Selection</div>
+      <div class="sel-name" id="s-name">Nothing selected</div>
+      <div class="sel-path sel-empty" id="s-path">Click a process to inspect it.</div>
+      <div id="s-body"></div>
     </aside>
   </main>
+
+  <footer>
+    <div class="legend">
+      <span class="l"><span class="sw" style="background:#5c6470"></span>process</span>
+      <span class="l"><span class="sw round" style="background:var(--amber)"></span>file</span>
+      <span class="l"><span class="ln"></span>spawned</span>
+      <span class="l"><span class="ln dash"></span>file → process</span>
+    </div>
+    <div id="status">observing</div>
+  </footer>
 
   <script src="/vendor/cytoscape.min.js"></script>
   <script src="/app.js"></script>

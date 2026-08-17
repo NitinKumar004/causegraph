@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -35,7 +36,7 @@ def _node_json(g, key) -> dict:
             "id": _node_id(key), "kind": "process",
             "label": f"{exe} (pid {n['pid']})",
             "pid": n["pid"], "exe": n["exe"], "user": n["user"],
-            "observed_spawn": n["observed_spawn"],
+            "observed_spawn": n["observed_spawn"], "spawn_ts": n["spawn_ts"],
             "peak_cpu_pct": n["peak_cpu_pct"], "peak_rss_bytes": n["peak_rss_bytes"],
         }
     return {"id": _node_id(key), "kind": "file",
@@ -56,7 +57,49 @@ def _all_payload(g, max_nodes: int) -> dict:
     return {"culprit": _node_id(sel[0]) if sel else None, "nodes": nodes, "edges": edges, "truncated": truncated}
 
 
-def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False) -> dict:
+def _spawn_children(g, key):
+    return [v for v in g.successors(key) if g.edges[key, v].get("rule") == "spawn"]
+
+
+def _emit(g, keys, min_confidence, culprit):
+    ids = {_node_id(k) for k in keys}
+    nodes = [_node_json(g, k) for k in keys]
+    edges = [{"source": _node_id(u), "target": _node_id(v), "rule": d.get("rule"), "confidence": d.get("confidence")}
+             for u, v, d in g.edges(data=True) if _node_id(u) in ids and _node_id(v) in ids
+             and (d.get("rule") != "file_watch" or (d.get("confidence") or 0) >= min_confidence)]
+    return {"culprit": _node_id(culprit), "nodes": nodes, "edges": edges}
+
+
+SIBLING_CAP = 8  # immediate siblings shown for context; a root child (e.g. launchd
+                 # with hundreds of kids) must not flood the focused family view.
+
+
+def _family_payload(g, culprit, min_confidence, max_nodes) -> dict:
+    """The selection's focused causal family: its root-ward ancestry spine, its file
+    causes, its own descendants, and a bounded set of immediate siblings — capped at
+    max_nodes. We add causes/subtree BEFORE siblings so a high-fanout parent (launchd
+    has 500+ children) can never crowd the actual causal story out of the budget."""
+    sel = {}  # id -> key, insertion-ordered
+    def add(k):
+        if len(sel) < max_nodes:
+            sel.setdefault(_node_id(k), k)
+    anc = traverse.ancestry_path(g, culprit)  # [root, ..., culprit] — a chain, not a fan
+    for k in anc:
+        add(k)
+    for f, _conf in traverse.causes(g, culprit, min_confidence):  # the causal story first
+        add(f)
+    for d in traverse.descendants_bfs(g, culprit):  # selection's own subtree
+        add(d)
+    if len(anc) >= 2:  # immediate siblings only, capped, for context
+        for c in sorted(_spawn_children(g, anc[-2]))[:SIBLING_CAP]:
+            add(c)
+    truncated = len(sel) >= max_nodes
+    p = _emit(g, sel.values(), min_confidence, culprit)
+    p["truncated"] = truncated
+    return p
+
+
+def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False) -> dict:
     """Return the bounded causal neighborhood of a culprit as {nodes, edges,
     truncated}, or {"error": msg}. With show_all, return the whole process tree.
     Bound (max_nodes) prevents serializing an unbounded graph."""
@@ -81,6 +124,9 @@ def graph_payload(db, pid=None, q=None, min_confidence=0.5, max_nodes=DEFAULT_MA
         if not res.ok:
             return {"error": res.message}
         culprit = res.culprit
+
+    if family:
+        return _family_payload(g, culprit, min_confidence, max_nodes)
 
     # Core: culprit + its root-ward ancestry. Normally a short chain, but guard the
     # pathological deep-nesting case so the payload never exceeds max_nodes with
@@ -152,19 +198,47 @@ def make_handler(db: str):
                 return self._json(200, {"db": os.path.basename(db)})
             return self._send(404, b"not found", "text/plain")
 
+        def do_POST(self):
+            # The only mutation route. Guarded two ways: the server binds 127.0.0.1
+            # only, and a custom header is required — a cross-origin page in the
+            # user's browser cannot set it (it triggers a CORS preflight this server
+            # never approves), which blocks drive-by CSRF against localhost.
+            if self.headers.get("X-CauseGraph") != "1":
+                return self._json(403, {"error": "forbidden"})
+            parsed = urlparse(self.path)
+            if parsed.path != "/api/kill":
+                return self._json(404, {"error": "not found"})
+            try:
+                pid = int(parse_qs(parsed.query)["pid"][0])
+            except (KeyError, ValueError, IndexError):
+                return self._json(400, {"error": "pid required"})
+            try:
+                os.kill(pid, signal.SIGKILL)
+                return self._json(200, {"ok": True, "pid": pid})
+            except ProcessLookupError:
+                return self._json(404, {"error": f"no process {pid}"})
+            except PermissionError:
+                return self._json(403, {"error": f"not permitted to kill {pid}"})
+            except OSError as e:
+                return self._json(500, {"error": str(e)})
+
         def _api(self, qs):
             kw = {}
             try:
                 if "all" in qs:
                     kw["show_all"] = qs["all"][0] not in ("0", "false", "no")
+                if "family" in qs:
+                    kw["family"] = qs["family"][0] not in ("0", "false", "no")
                 if "pid" in qs:
                     kw["pid"] = int(qs["pid"][0])
                 if "q" in qs:
                     kw["q"] = qs["q"][0]
                 if "min_confidence" in qs:
                     kw["min_confidence"] = float(qs["min_confidence"][0])
+                if "max_nodes" in qs:
+                    kw["max_nodes"] = int(qs["max_nodes"][0])
             except ValueError:
-                return self._json(400, {"error": "pid must be an integer, min_confidence a float"})
+                return self._json(400, {"error": "pid/max_nodes must be integers, min_confidence a float"})
             try:
                 payload = graph_payload(db, **kw)
             except Exception:

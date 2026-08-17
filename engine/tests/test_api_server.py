@@ -43,6 +43,8 @@ def test_server_routes_bind_and_teardown(filewatch_db):
         assert _get_status(port, "/api/graph") == 400          # neither pid nor q
         assert _get_status(port, "/api/graph?pid=abc") == 400   # non-int pid
         assert _get_status(port, "/api/graph?pid=900&min_confidence=hot") == 400  # bad float
+        assert _get_status(port, "/api/graph?all=1&max_nodes=lots") == 400  # bad int max_nodes
+        assert _get(port, "/api/graph?all=1&max_nodes=1")[0] == 200  # max_nodes honored, not ignored
         assert _get_status(port, "/nope") == 404                # unknown path
         s, ctype, body = _get(port, "/api/meta")                # db name for the header chip
         assert s == 200 and json.loads(body)["db"].endswith(".db")
@@ -70,6 +72,28 @@ def test_bad_db_returns_clean_json_error_not_traceback(tmp_path):
     finally:
         httpd.shutdown()
         t.join(timeout=2)
+
+
+def test_kill_endpoint_is_guarded(filewatch_db):
+    """POST /api/kill needs the anti-CSRF header + a pid; a bogus pid 404s. No real
+    process is killed (we use an impossible pid)."""
+    import urllib.request
+    httpd = server.serve(filewatch_db, host="127.0.0.1", port=0)
+    _, port = httpd.server_address
+    t = threading.Thread(target=httpd.serve_forever, daemon=True); t.start()
+
+    def post(path, hdr=None):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method="POST", data=b"", headers=hdr or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r: return r.status
+        except urllib.error.HTTPError as e: return e.code
+
+    try:
+        assert post("/api/kill?pid=1") == 403                              # missing header
+        assert post("/api/kill", {"X-CauseGraph": "1"}) == 400             # missing pid
+        assert post("/api/kill?pid=2147480000", {"X-CauseGraph": "1"}) == 404  # no such process
+    finally:
+        httpd.shutdown(); t.join(timeout=2)
 
 
 def test_served_assets_have_no_external_network_refs():

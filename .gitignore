@@ -6,6 +6,7 @@ ship.config.json
 
 # build + runtime artifacts
 /bin/
+daemon/bin/
 *.db
 *.db-wal
 *.db-shm

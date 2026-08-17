@@ -35,6 +35,7 @@ def test_pid_payload_shape_and_file_cause(filewatch_db):
     proc = next(n for n in p["nodes"] if n["id"] == "p:900:2000")
     assert proc["kind"] == "process" and proc["label"] == "/usr/bin/python3 (pid 900)"
     assert proc["observed_spawn"] is True and proc["peak_cpu_pct"] == 40.0
+    assert proc["spawn_ts"] == 2000  # start time for the "started" field
     fnode = next(n for n in p["nodes"] if n["id"] == "f:/etc/app.conf")
     assert fnode["kind"] == "file" and fnode["label"] == "app.conf"
     # the file->process edge carries rule + confidence
@@ -64,6 +65,26 @@ def test_show_all_capped(tmp_path):
     db = _db(tmp_path, events, "big.db")
     p = graph_payload(db, show_all=True, max_nodes=10)
     assert len(p["nodes"]) == 10 and p["truncated"] is True
+
+
+def test_family_is_focused_not_flooded_by_high_fanout_ancestor(tmp_path):
+    # root pid 1 has 100 direct children; the culprit (pid 5000) is a grandchild via
+    # pid 1000. The family view must be the spine + immediate siblings, NOT root's 100
+    # children — a high-fanout ancestor (like launchd) can't flood the focused view.
+    events = ([_spawn(1, 0, 5)]
+              + [_spawn(1000 + i, 1, 10 + i) for i in range(100)]   # 100 children of root
+              + [_spawn(5000, 1000, 200)]                            # culprit under pid 1000
+              + [_spawn(6000 + i, 1000, 210 + i) for i in range(20)])  # 20 siblings of culprit
+    db = _db(tmp_path, events, "fanout_family.db")
+    p = graph_payload(db, pid=5000, family=True)
+    pids = {n["pid"] for n in p["nodes"] if n["kind"] == "process"}
+    assert {1, 1000, 5000} <= pids           # spine present
+    assert p["truncated"] is False
+    assert len(p["nodes"]) < 40              # focused, not the whole 120-node tree
+    others = sum(1 for x in range(1, 100) if (1000 + x) in pids)  # root's OTHER children
+    assert others == 0                        # none of launchd-style cousins leaked in
+    sibs = sum(1 for x in range(20) if (6000 + x) in pids)        # capped siblings
+    assert 0 < sibs <= 8
 
 
 def test_no_duplicate_culprit(graph_db):
