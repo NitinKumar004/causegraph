@@ -93,8 +93,20 @@ function renderGraph(data) {
   }
   for (const e of data.edges) els.push({ data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, conf: e.conf, rule: e.rule, col: e.rule === "file_watch" ? "#c99539" : "#5f7796" } });
   cy.elements().remove(); cy.add(els);
-  const lay = cy.layout({ name: "breadthfirst", directed: true, padding: 40, spacingFactor: 1.45, avoidOverlap: true, animate: true, animationDuration: 380, animationEasing: "ease-out" });
-  lay.one("layoutstop", () => { cy.animate({ fit: { padding: 80 }, duration: 300 }); syncFor(760); });
+  const lay = cy.layout({ name: "breadthfirst", directed: true, padding: 40, spacingFactor: 1.2, avoidOverlap: true, animate: true, animationDuration: 380, animationEasing: "ease-out" });
+  lay.one("layoutstop", () => {
+    // Fit the whole graph, but never zoom out so far the cards become unreadable
+    // (a tall ancestry spine would otherwise shrink 208px cards to ~70px). Below
+    // the floor we keep cards legible and center on the culprit; overflow pans.
+    cy.fit(cy.elements(), 80);
+    const MIN = 0.82;
+    if (cy.zoom() < MIN) {
+      cy.zoom(MIN);
+      const focus = cy.getElementById(data.culprit);
+      if (focus && focus.nonempty()) cy.center(focus); else cy.center();
+    }
+    syncFor(820);
+  });
   lay.run(); buildCards(); syncFor(900); animateEdges(); overlay(null);
   $("hcount").textContent = ` · ${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}`;
   $("status").textContent = `observing · ${data.nodes.length} nodes · ${data.edges.length} edges` + (data.truncated ? " · truncated" : "");
