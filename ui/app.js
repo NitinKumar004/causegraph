@@ -70,9 +70,12 @@ function buildCards() {
 }
 function positionCards() {
   const z = cy.zoom();
-  cy.nodes().forEach((cyn) => { const d = cards[cyn.id()]; if (!d) return; const p = cyn.renderedPosition(); d.style.transform = `translate(${p.x}px,${p.y}px) translate(-50%,-50%) scale(${z})`; });
+  cy.nodes().forEach((cyn) => { const d = cards[cyn.id()]; if (!d) return; const p = cyn.renderedPosition(); d.style.transform = `translate3d(${p.x}px,${p.y}px,0) translate(-50%,-50%) scale(${z})`; });
 }
-cy.on("pan zoom", positionCards); cy.on("position", "node", positionCards);
+// Sync on `render` (fires right after each canvas paint) so cards move in the SAME
+// frame as the edges — pan/zoom events alone land on a different frame and the eye
+// sees the cards lag the canvas while dragging.
+cy.on("render pan zoom", positionCards); cy.on("position", "node", positionCards);
 function syncFor(ms) { const end = performance.now() + ms; (function t() { positionCards(); if (performance.now() < end) requestAnimationFrame(t); })(); }
 // Fit the graph but never below a legible zoom floor; center on the culprit when clamped.
 function refit() {
