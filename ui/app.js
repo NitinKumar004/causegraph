@@ -220,9 +220,24 @@ function ancestryChain(id) {
   }
   return chain.reverse();  // root → … → this
 }
-function inspectHTML(n) {
-  const nm = base(n.exe), cpu = n.peak_cpu_pct;
-  const cmd = n.args && n.args.length ? n.args.join(" ") : (n.exe || "—");
+const fmtPct = (v) => (v == null ? "—" : v.toFixed(1) + "%");
+// tiny inline area+line chart of a value series (no libs); red when it peaks hot
+function sparkline(vals, w, h) {
+  vals = vals.filter((v) => v != null);
+  if (vals.length < 2) return '<div class="nospark">not enough samples yet — give it a few seconds</div>';
+  const max = Math.max(...vals, 1), step = w / (vals.length - 1);
+  const line = vals.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 4) - 2).toFixed(1)}`).join(" ");
+  const col = max >= HOT ? "#f87171" : "#7dd3fc";
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="100%" height="${h}">
+    <polygon points="0,${h} ${line} ${w},${h}" fill="${col}" opacity="0.10"></polygon>
+    <polyline points="${line}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+  </svg>`;
+}
+// n = graph node (for lineage/causes); d = /api/proc detail (resources/children), may be null while loading
+function inspectHTML(n, d) {
+  const nm = base(n.exe);
+  const args = (d && d.args && d.args.length) ? d.args : (n.args || []);
+  const cmd = args.length ? args.join(" ") : (n.exe || "—");
   const chain = ancestryChain(n.id).map((id) => nodeById[id]).filter((x) => x && x.pid != null);
   const lineage = chain.map((x) =>
     `<span class="chip${x.id === n.id ? " self" : ""}">${esc(base(x.exe))} <i>${x.pid}</i></span>`
@@ -231,6 +246,26 @@ function inspectHTML(n) {
     .filter((e) => e.rule === "file_watch" && e.target === n.id)
     .map((e) => ({ path: (nodeById[e.source] || {}).path, conf: e.confidence }))
     .filter((c) => c.path);
+
+  let resBlock = '<div class="kick" style="margin-top:18px">Resources</div><div class="nospark">loading…</div>';
+  if (d) {
+    const c = d.cpu || {}, m = d.rss || {};
+    const st = d.status === "running" ? '<span class="stpill run">running</span>' : '<span class="stpill">exited</span>';
+    resBlock = `
+      <div class="kick" style="margin-top:18px">Status</div>
+      <div style="margin-top:6px">${st} <span style="color:var(--muted);font-size:12.5px">· ${d.sample_count} samples</span></div>
+      <div class="kick" style="margin-top:16px">CPU over time</div>
+      <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.cpu), 300, 46)}</div>
+      <div class="stats"><span>now <b style="color:${cpuColor(c.now)}">${fmtPct(c.now)}</b></span><span>peak <b style="color:${cpuColor(c.peak)}">${fmtPct(c.peak)}</b></span><span>avg <b>${fmtPct(c.avg)}</b></span></div>
+      <div class="kick" style="margin-top:16px">Memory</div>
+      <div class="stats"><span>now <b>${humanBytes(m.now)}</b></span><span>peak <b>${humanBytes(m.peak)}</b></span></div>`;
+  }
+  let childBlock = "";
+  if (d && d.children && d.children.length) {
+    const shown = d.children.slice(0, 12).map((ch) => `<span class="chip">${esc(base(ch.exe))} <i>${ch.pid}</i></span>`).join("");
+    const more = d.children.length > 12 ? `<span style="color:var(--muted);font-size:12px">+${d.children.length - 12} more</span>` : "";
+    childBlock = `<div class="kick" style="margin-top:18px">Spawned (${d.children.length})</div><div class="children">${shown}${more}</div>`;
+  }
   return `<button class="x" aria-label="Close">×</button>
     <div class="kick">Process</div>
     <h3>${esc(nm)}</h3>
@@ -241,20 +276,27 @@ function inspectHTML(n) {
       <dt>pid</dt><dd>${n.pid}</dd>
       <dt>user</dt><dd>${esc(n.user) || "—"}</dd>
       <dt>started</dt><dd>${fmtTime(n.spawn_ts)}</dd>
-      <dt>peak RSS</dt><dd>${humanBytes(n.peak_rss_bytes)}</dd>
-      <dt>peak CPU</dt><dd style="color:${cpuColor(cpu)};font-weight:700">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</dd>
     </dl>
-    <div class="kick">Lineage <span style="color:var(--dim);font-weight:500;text-transform:none;letter-spacing:0">— what launched it</span></div>
+    ${resBlock}
+    <div class="kick" style="margin-top:18px">Lineage <span style="color:var(--dim);font-weight:500;text-transform:none;letter-spacing:0">— what launched it</span></div>
     <div class="lineage">${lineage || '<span style="color:var(--muted);font-size:12.5px">no captured parent</span>'}</div>
+    ${childBlock}
     <div class="kick" style="margin-top:18px">Triggered by</div>
     ${causes.length
       ? causes.map((c) => `<div class="cause"><span class="fpath">${esc(c.path)}</span><span class="conf">${c.conf != null ? "conf " + c.conf.toFixed(2) : ""}</span></div>`).join("")
       : '<div style="color:var(--muted);font-size:12.5px">no file cause captured</div>'}`;
 }
-function openInspect(n) {
-  $("sheet").innerHTML = inspectHTML(n);
+async function openInspect(n) {
   $("modal").classList.add("show");
+  $("sheet").innerHTML = inspectHTML(n, null);   // instant render; resources fill in
   $("sheet").querySelector(".x").onclick = closeInspect;
+  try {
+    const d = await (await fetch(`/api/proc?pid=${n.pid}`)).json();
+    if (!d.error && $("modal").classList.contains("show")) {
+      $("sheet").innerHTML = inspectHTML(n, d);
+      $("sheet").querySelector(".x").onclick = closeInspect;
+    }
+  } catch (_) { /* keep the instant view */ }
 }
 function closeInspect() { $("modal").classList.remove("show"); }
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeInspect(); });

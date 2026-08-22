@@ -115,6 +115,39 @@ def _family_payload(g, culprit, min_confidence, max_nodes) -> dict:
     return p
 
 
+def proc_detail(db, pid, max_series=90) -> dict:
+    """Rich detail for one process instance, for the Inspect view: lifecycle status,
+    CPU/RSS now/peak/avg, a resource sample SERIES (for a sparkline), and children it
+    spawned. Read-only over the captured events — no live OS query."""
+    events = list(reader.read_events(db))
+    g = builder.build(events)
+    attribution.annotate(g, events)
+    key = traverse.latest_instance(g, pid)
+    if key is None:
+        return {"error": f"no process with pid {pid} in the capture window"}
+    n = g.nodes[key]
+    spawn_ts, exit_ts = n["spawn_ts"], n["exit_ts"]
+    samples = []  # (ts, cpu, rss) for THIS instance's live window
+    for e in events:
+        if (e.kind == "resource.sample" and e.actor.pid == pid and e.metrics is not None
+                and e.ts >= spawn_ts and (exit_ts is None or e.ts <= exit_ts)):
+            samples.append((e.ts, e.metrics.cpu_pct, e.metrics.rss_bytes))
+    samples.sort(key=lambda s: s[0])
+    cpus = [c for _, c, _ in samples if c is not None]
+    rsses = [r for _, _, r in samples if r is not None]
+    return {
+        "pid": pid, "exe": n["exe"], "user": n["user"], "args": list(n["args"] or []),
+        "status": "exited" if exit_ts else "running",
+        "spawn_ts": spawn_ts, "exit_ts": exit_ts,
+        "cpu": {"now": cpus[-1] if cpus else None, "peak": max(cpus) if cpus else None,
+                "avg": (sum(cpus) / len(cpus)) if cpus else None},
+        "rss": {"now": rsses[-1] if rsses else None, "peak": max(rsses) if rsses else None},
+        "series": [{"ts": ts, "cpu": c, "rss": r} for ts, c, r in samples[-max_series:]],
+        "sample_count": len(samples),
+        "children": [{"pid": g.nodes[v]["pid"], "exe": g.nodes[v]["exe"]} for v in _spawn_children(g, key)],
+    }
+
+
 def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False) -> dict:
     """Return the bounded causal neighborhood of a culprit as {nodes, edges,
     truncated}, or {"error": msg}. With show_all, return the whole process tree.
@@ -202,6 +235,17 @@ def make_handler(db: str):
                 return self._send(200, body, ctype)
             if path == "/api/graph":
                 return self._api(parse_qs(parsed.query))
+            if path == "/api/proc":
+                qs = parse_qs(parsed.query)
+                try:
+                    pid = int(qs["pid"][0])
+                except (KeyError, ValueError, IndexError):
+                    return self._json(400, {"error": "pid required"})
+                try:
+                    payload = proc_detail(db, pid)
+                except Exception:
+                    return self._json(500, {"error": "could not read the events database"})
+                return self._json(400 if "error" in payload else 200, payload)
             if path == "/api/meta":
                 return self._json(200, {"db": os.path.basename(db), "latest_ts": _latest_ts(db)})
             return self._send(404, b"not found", "text/plain")
