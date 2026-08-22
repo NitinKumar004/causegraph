@@ -39,6 +39,7 @@ let groupMode = "app";   // "app" (roll-ups) or "proc" (flat per-PID list)
 let filterCpu = 0, filterMem = 0, filterText = "";
 const nodeById = {};     // id -> node meta from the current graph
 let currentPid = null;   // the pid whose family the graph currently shows (for live refresh)
+let expanded = false;    // whether the current family view is the widened ("show more") one
 // auto-refresh: re-poll the DB on a timer, paused while the user is interacting so
 // the view never yanks. autoMs = 0 means off. Cycled via the header "live" button.
 const AUTO_STEPS = [4000, 8000, 15000, 0];  // 4s -> 8s -> 15s -> off -> (loops)
@@ -136,7 +137,23 @@ function renderGraph(data) {
   lay.one("layoutstop", () => { refit(); syncFor(820); });
   lay.run(); buildCards(); syncFor(900); animateEdges(); overlay(null);
   $("hcount").textContent = ` · ${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"}`;
-  $("status").textContent = `observing · ${data.nodes.length} nodes · ${data.edges.length} edges` + (data.truncated ? " · truncated" : "");
+  setStatus(data);
+}
+// footer status; when the view was capped, offer a clickable "show more" that widens it
+function setStatus(d) {
+  let s = `observing · ${d.nodes.length} nodes · ${d.edges.length} edges`;
+  if (d.truncated) s += expanded ? " · showing more" : ` · <span id="expandLink" class="expandlink">show more</span>`;
+  $("status").innerHTML = s;
+  const l = $("expandLink"); if (l) l.onclick = expandCurrent;
+}
+async function expandCurrent() {
+  if (currentPid == null) return;
+  expanded = true;
+  try {
+    const r = await fetch(`/api/graph?pid=${currentPid}&family=1&expand=1&min_confidence=${$("minc").value}`);
+    const d = await r.json();
+    if (r.ok && !d.error) { renderGraph(d); selectNode(selectedId && nodeById[selectedId] ? selectedId : d.culprit); }
+  } catch (_) { /* keep current view */ }
 }
 function hoverNode(cyn) { hoverActive = true; const hi = cyn.closedNeighborhood(); const keep = new Set(hi.nodes().map((x) => x.id())); cy.edges().style("opacity", 0.08); hi.edges().style("opacity", 0.95); for (const id in cards) cards[id].classList.toggle("dim", !keep.has(id)); }
 function unhover() { hoverActive = false; cy.edges().style("opacity", 0.9); for (const id in cards) cards[id].classList.remove("dim"); }
@@ -391,6 +408,7 @@ function showFile(n) {
 async function focusPid(pid) {
   overlay("loading");
   currentPid = pid;  // remember what the graph shows, so live refresh re-polls it
+  expanded = false;  // a new focus starts from the compact view
   try {
     const r = await fetch(`/api/graph?pid=${pid}&family=1&min_confidence=${$("minc").value}`);
     const d = await r.json();
@@ -530,7 +548,7 @@ function applyGraphUpdate(d) {
     card.classList.toggle("hot", n.kind === "process" && isHot(curCpu(n)));
   }
   applyGraphFilter();
-  $("status").textContent = `observing · ${d.nodes.length} nodes · ${d.edges.length} edges` + (d.truncated ? " · truncated" : "");
+  setStatus(d);
   if (selectedId && nodeById[selectedId]) selectNode(selectedId);  // refresh inspector numbers
 }
 
@@ -546,7 +564,7 @@ async function refreshData() {
       renderList();
     }
     if (currentPid != null) {
-      const rg = await fetch(`/api/graph?pid=${currentPid}&family=1&min_confidence=${$("minc").value}`);
+      const rg = await fetch(`/api/graph?pid=${currentPid}&family=1${expanded ? "&expand=1" : ""}&min_confidence=${$("minc").value}`);
       const dg = await rg.json();
       if (rg.ok && !dg.error) applyGraphUpdate(dg);
     }

@@ -135,12 +135,14 @@ def _children_by_cpu(g, key):
     return sorted(_spawn_children(g, key), key=lambda k: -(g.nodes[k].get("peak_cpu_pct") or 0))
 
 
-def _family_payload(g, culprit, min_confidence, max_nodes) -> dict:
+def _family_payload(g, culprit, min_confidence, max_nodes, expand=False) -> dict:
     """The selection's focused, READABLE causal family: root-ward ancestry spine, file
     causes, a bounded slice of its subtree (top CHILD_CAP children per parent), and a few
-    siblings — capped at FAMILY_MAX so a high-fanout node never floods the graph."""
+    siblings — capped at FAMILY_MAX so a high-fanout node never floods the graph. With
+    expand=True the caps widen (user asked to see more)."""
     from collections import deque
-    cap = min(max_nodes, FAMILY_MAX)
+    child_cap = 40 if expand else CHILD_CAP
+    cap = min(max_nodes, 240 if expand else FAMILY_MAX)
     sel = {}  # id -> key, insertion-ordered
     truncated = False
     def add(k):
@@ -158,9 +160,9 @@ def _family_payload(g, culprit, min_confidence, max_nodes) -> dict:
     dq = deque([culprit])  # bounded BFS of the subtree: busiest CHILD_CAP children per parent
     while dq and len(sel) < cap:
         kids = _children_by_cpu(g, dq.popleft())
-        if len(kids) > CHILD_CAP:
+        if len(kids) > child_cap:
             truncated = True
-        for c in kids[:CHILD_CAP]:
+        for c in kids[:child_cap]:
             if add(c):
                 dq.append(c)
     if len(anc) >= 2:  # immediate siblings only, capped, for context
@@ -205,7 +207,7 @@ def proc_detail(db, pid, max_series=90) -> dict:
     }
 
 
-def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False) -> dict:
+def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False, expand=False) -> dict:
     """Return the bounded causal neighborhood of a culprit as {nodes, edges,
     truncated}, or {"error": msg}. With show_all, return the whole process tree.
     Bound (max_nodes) prevents serializing an unbounded graph."""
@@ -222,7 +224,7 @@ def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES,
         return {"error": f"no process with pid {pid} in the capture window"}
 
     if family:
-        return _family_payload(g, culprit, min_confidence, max_nodes)
+        return _family_payload(g, culprit, min_confidence, max_nodes, expand)
 
     # Core: culprit + its root-ward ancestry. Normally a short chain, but guard the
     # pathological deep-nesting case so the payload never exceeds max_nodes with
@@ -336,6 +338,8 @@ def make_handler(db: str):
                     kw["show_all"] = qs["all"][0] not in ("0", "false", "no")
                 if "family" in qs:
                     kw["family"] = qs["family"][0] not in ("0", "false", "no")
+                if "expand" in qs:
+                    kw["expand"] = qs["expand"][0] not in ("0", "false", "no")
                 if "pid" in qs:
                     kw["pid"] = int(qs["pid"][0])
                 if "min_confidence" in qs:
