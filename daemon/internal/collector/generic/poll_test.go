@@ -90,6 +90,48 @@ func TestSampleThreshold(t *testing.T) {
 	}
 }
 
+// M1a: the adaptive cadence — churn snaps to min, sustained quiet backs off to max.
+func TestNextIntervalAdapts(t *testing.T) {
+	min, max := 250*time.Millisecond, 2*time.Second
+
+	// churn always snaps straight to the fast cadence and resets the quiet counter.
+	if got, q := nextInterval(max, min, max, true, 2); got != min || q != 0 {
+		t.Fatalf("churn: got (%v,%d), want (%v,0)", got, q, min)
+	}
+
+	// from min, quiet ticks accumulate, then back off by doubling on the 3rd.
+	iv, q := min, 0
+	iv, q = nextInterval(iv, min, max, false, q) // quiet 1: hold
+	if iv != min || q != 1 {
+		t.Fatalf("quiet#1: got (%v,%d), want (%v,1)", iv, q, min)
+	}
+	iv, q = nextInterval(iv, min, max, false, q) // quiet 2: hold
+	if iv != min || q != 2 {
+		t.Fatalf("quiet#2: got (%v,%d), want (%v,2)", iv, q, min)
+	}
+	iv, q = nextInterval(iv, min, max, false, q) // quiet 3: back off, reset
+	if iv != 2*min || q != 0 {
+		t.Fatalf("quiet#3: got (%v,%d), want (%v,0)", iv, q, 2*min)
+	}
+
+	// back-off is clamped at max.
+	if got, _ := nextInterval(2*time.Second, min, max, false, backoffQuiet-1); got != max {
+		t.Fatalf("clamp: got %v, want %v", got, max)
+	}
+}
+
+// M1a: PollMax<=0 falls back to SampleInterval; PollMin>=max disables adaptation.
+func TestPollBounds(t *testing.T) {
+	p := &Poller{cfg: config.Config{SampleInterval: 2 * time.Second, PollMin: 250 * time.Millisecond}}
+	if min, max := p.pollBounds(); min != 250*time.Millisecond || max != 2*time.Second {
+		t.Fatalf("adaptive bounds: got (%v,%v)", min, max)
+	}
+	p2 := &Poller{cfg: config.Config{SampleInterval: 2 * time.Second, PollMin: 3 * time.Second}}
+	if min, max := p2.pollBounds(); min != max { // min >= max disables adaptation
+		t.Fatalf("disabled adaptation should give min==max, got (%v,%v)", min, max)
+	}
+}
+
 func TestCapabilities(t *testing.T) {
 	p, _ := New(config.Default())
 	c := p.Capabilities()

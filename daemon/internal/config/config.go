@@ -16,7 +16,9 @@ type Config struct {
 	BatchInterval time.Duration // flush timer even if BatchSize not reached
 
 	// Collector (generic poll)
-	SampleInterval    time.Duration // one tick: snapshot diff + resource sampling
+	SampleInterval    time.Duration // resource-sample cadence (CPU/RSS)
+	PollMin           time.Duration // fastest process-diff cadence, during churn
+	PollMax           time.Duration // slowest process-diff cadence, when idle (0 = SampleInterval)
 	SampleMinCPUPct   float64       // "processes that matter": sample if cpu >= this
 	SampleMinRSS      int64         // ...or rss_bytes >= this
 	HeartbeatInterval time.Duration // periodic liveness event
@@ -37,6 +39,8 @@ func Default() Config {
 		BatchSize:         512,
 		BatchInterval:     500 * time.Millisecond,
 		SampleInterval:    2 * time.Second,
+		PollMin:           250 * time.Millisecond,
+		PollMax:           0, // 0 => fall back to SampleInterval
 		SampleMinCPUPct:   1.0,
 		SampleMinRSS:      100 << 20, // 100 MiB
 		HeartbeatInterval: 30 * time.Second,

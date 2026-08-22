@@ -31,7 +31,9 @@ func main() {
 	cfg := config.Default()
 	var duration time.Duration
 	flag.StringVar(&cfg.DBPath, "db", cfg.DBPath, "SQLite database path")
-	flag.DurationVar(&cfg.SampleInterval, "interval", cfg.SampleInterval, "poll/sample interval")
+	flag.DurationVar(&cfg.SampleInterval, "interval", cfg.SampleInterval, "resource-sample interval (CPU/RSS)")
+	flag.DurationVar(&cfg.PollMin, "poll-min", cfg.PollMin, "fastest process-diff cadence, during churn (catches short-lived processes)")
+	flag.DurationVar(&cfg.PollMax, "poll-max", cfg.PollMax, "slowest process-diff cadence, when idle (0 = use -interval; set >= poll-min to enable adaptive polling)")
 	flag.Int64Var(&cfg.MaxRows, "max-rows", cfg.MaxRows, "events table ring-buffer cap")
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", cfg.HeartbeatInterval, "heartbeat interval")
 	flag.DurationVar(&duration, "duration", 0, "run for this long then exit (0 = until SIGINT)")

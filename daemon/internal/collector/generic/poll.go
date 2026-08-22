@@ -62,12 +62,48 @@ func (p *Poller) Capabilities() collector.Caps {
 
 func (p *Poller) Close() error { return nil }
 
-// Start runs one poll tick every SampleInterval. A tick both diffs the current
-// snapshot against the previous one (spawn/exit) and emits resource samples for
-// processes that matter — one config value governs both cadences. The very first
-// snapshot is a baseline (no spawn flood for already-running processes).
+// backoffQuiet: consecutive empty diff ticks before the cadence backs off a step.
+const backoffQuiet = 3
+
+// nextInterval picks the next process-diff cadence. Churn snaps to min (poll fast to
+// catch short-lived processes); sustained quiet (>= backoffQuiet empty ticks) doubles
+// toward max so an idle machine costs nothing. Pure, so it is unit-tested.
+func nextInterval(cur, min, max time.Duration, churn bool, quiet int) (time.Duration, int) {
+	if churn {
+		return min, 0
+	}
+	if quiet+1 >= backoffQuiet {
+		next := cur * 2
+		if next > max {
+			next = max
+		}
+		return next, 0
+	}
+	return cur, quiet + 1
+}
+
+// pollBounds resolves the adaptive diff cadence window. PollMax<=0 means "use
+// SampleInterval"; a PollMin that is unset or >= max disables adaptation (fixed at max).
+func (p *Poller) pollBounds() (min, max time.Duration) {
+	max = p.cfg.PollMax
+	if max <= 0 {
+		max = p.cfg.SampleInterval
+	}
+	min = p.cfg.PollMin
+	if min <= 0 || min >= max {
+		min = max
+	}
+	return min, max
+}
+
+// Start runs two independent cadences (architecture.md §3.2, M1a):
+//   - an ADAPTIVE process-diff timer in [PollMin, PollMax] — fast during churn to catch
+//     short-lived processes, backing off when idle. Its scan skips CPU/RSS (cheap).
+//   - a fixed SampleInterval resource-sample ticker (CPU/RSS need no sub-second cadence).
+//
+// The first snapshot is a baseline (no spawn flood for already-running processes).
 func (p *Poller) Start(ctx context.Context, out chan<- event.Event) error {
-	prev := p.scan()
+	prev := p.scan(true)
 	// Emit an initial resource sample for the baseline so the store is not empty
 	// until the first process starts/stops.
 	for _, e := range p.sampleEvents(prev, nowNs()) {
@@ -76,23 +112,36 @@ func (p *Poller) Start(ctx context.Context, out chan<- event.Event) error {
 		}
 	}
 
-	ticker := time.NewTicker(p.cfg.SampleInterval)
-	defer ticker.Stop()
+	min, max := p.pollBounds()
+	interval, quiet := max, 0 // start idle
+	diffTimer := time.NewTimer(interval)
+	defer diffTimer.Stop()
+	resTicker := time.NewTicker(p.cfg.SampleInterval)
+	defer resTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-ticker.C:
-			cur := p.scan()
+		case <-diffTimer.C:
+			cur := p.scan(false) // identity only — no CPU/RSS on the fast path
 			ts := nowNs()
 			evs := diff(prev, cur, p.hostID, ts, uuid.NewString)
-			evs = append(evs, p.sampleEventsWithID(cur, ts, uuid.NewString)...)
 			for _, e := range evs {
 				if !send(ctx, out, e) {
 					return nil
 				}
 			}
 			prev = cur
+			interval, quiet = nextInterval(interval, min, max, len(evs) > 0, quiet)
+			diffTimer.Reset(interval)
+		case <-resTicker.C:
+			snap := p.scan(true)
+			ts := nowNs()
+			for _, e := range p.sampleEventsWithID(snap, ts, uuid.NewString) {
+				if !send(ctx, out, e) {
+					return nil
+				}
+			}
 		}
 	}
 }
@@ -109,8 +158,12 @@ func send(ctx context.Context, out chan<- event.Event, e event.Event) bool {
 func nowNs() int64 { return time.Now().UnixNano() }
 
 // scan builds a snapshot from the live process list. Processes that error out
-// mid-scan (they exited) are skipped rather than failing the whole tick.
-func (p *Poller) scan() snapshot {
+// mid-scan (they exited) are skipped rather than failing the whole tick. When
+// withMetrics is false (the fast diff path) it skips CPUPercent()+MemoryInfo() —
+// the two costly per-process calls — since spawn/exit detection needs only identity
+// (pid/ppid/createNs/exe/args/user). createNs is always fetched so pid-reuse stays
+// detectable on the fast path.
+func (p *Poller) scan(withMetrics bool) snapshot {
 	snap := make(snapshot)
 	procs, err := process.Processes()
 	if err != nil {
@@ -129,12 +182,15 @@ func (p *Poller) scan() snapshot {
 		exe, _ := pr.Exe()
 		args, _ := pr.CmdlineSlice()
 		user, _ := pr.Username()
-		// CPUPercent's first read per process is coarse/0 (gopsutil needs two
-		// reads to compute a delta); acceptable for sampling semantics.
-		cpu, _ := pr.CPUPercent()
+		var cpu float64
 		var rss int64
-		if mi, err := pr.MemoryInfo(); err == nil && mi != nil {
-			rss = int64(mi.RSS)
+		if withMetrics {
+			// CPUPercent's first read per process is coarse/0 (gopsutil needs two
+			// reads to compute a delta); acceptable for sampling semantics.
+			cpu, _ = pr.CPUPercent()
+			if mi, err := pr.MemoryInfo(); err == nil && mi != nil {
+				rss = int64(mi.RSS)
+			}
 		}
 		if args == nil {
 			args = []string{}
