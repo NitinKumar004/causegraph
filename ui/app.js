@@ -225,33 +225,55 @@ function renderAppRows(el, rows) {
 }
 
 // ================= selection (right) =================
-function selectNode(id) {
+// The always-visible inspector body: identity + live CPU & memory trend graphs (the two
+// things a user needs to judge a process) + open files. d is the /api/proc detail (null
+// while it loads). Full command / lineage / children live in the Inspect modal.
+function inspectorBody(n, d) {
+  const files = (graphData ? graphData.edges : []).filter((e) => e.rule === "file_watch" && e.target === n.id)
+    .map((e) => (nodeById[e.source] || {}).path).filter(Boolean);
+  let res = '<div class="nospark" style="margin-top:14px">loading resource history…</div>';
+  if (d) {
+    const c = d.cpu || {}, m = d.rss || {};
+    const st = d.status === "running" ? '<span class="stpill run">running</span>' : '<span class="stpill">exited</span>';
+    res = `
+      <div style="margin-top:14px">${st} <span style="color:var(--muted);font-size:12px">· ${d.sample_count} samples</span></div>
+      <div class="kick" style="margin-top:16px">CPU</div>
+      <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.cpu), 260, 44, true)}</div>
+      <div class="stats"><span>now <b style="color:${cpuColor(c.now)}">${fmtPct(c.now)}</b></span><span>peak <b style="color:${cpuColor(c.peak)}">${fmtPct(c.peak)}</b></span><span>avg <b>${fmtPct(c.avg)}</b></span></div>
+      <div class="kick" style="margin-top:16px">Memory</div>
+      <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.rss), 260, 44, false)}</div>
+      <div class="stats"><span>now <b>${humanBytes(m.now)}</b></span><span>peak <b>${humanBytes(m.peak)}</b></span></div>`;
+  }
+  return `
+    <dl class="kv">
+      <dt>pid</dt><dd>${n.pid}</dd>
+      <dt>user</dt><dd>${esc(n.user) || "—"}</dd>
+      <dt>started</dt><dd>${fmtTime(n.spawn_ts)}</dd>
+    </dl>
+    ${res}
+    <div class="kick" style="margin-top:16px">Open files</div>
+    <div class="files">${files.length ? files.map((f) => `<span class="fpill">${esc(base(f))}</span>`).join("") : '<span class="hint" style="color:var(--muted)">none captured</span>'}</div>
+    <div class="actions"><button class="inspect" id="inspect">Inspect</button><button class="kill" id="kill">Kill −9</button></div>`;
+}
+function wireInspector(n) {
+  $("inspect").onclick = () => openInspect(n);
+  $("kill").onclick = () => killPid(n.pid, base(n.exe));
+}
+async function selectNode(id) {
   selectedId = id;
   for (const k in cards) cards[k].classList.toggle("sel", k === id);
   const n = nodeById[id] || allProcs.find((p) => p.id === id);
   if (!n) return;
   renderList();
   if (n.kind !== "process") { showFile(n); return; }
-  const cpu = n.peak_cpu_pct, pct = Math.min(100, cpu || 0);
-  // open files = file nodes connected to this process in the current graph
-  const files = (graphData ? graphData.edges : []).filter((e) => e.rule === "file_watch" && e.target === id)
-    .map((e) => (nodeById[e.source] || {}).path).filter(Boolean);
   $("s-name").textContent = base(n.exe);
   $("s-path").className = "sel-path"; $("s-path").textContent = n.exe || "";
-  $("s-body").innerHTML = `
-    <dl class="kv">
-      <dt>pid</dt><dd>${n.pid}</dd>
-      <dt>user</dt><dd>${esc(n.user) || "—"}</dd>
-      <dt>started</dt><dd>${fmtTime(n.spawn_ts)}</dd>
-      <dt>peak RSS</dt><dd>${humanBytes(n.peak_rss_bytes)}</dd>
-    </dl>
-    <div class="cpurow"><span class="lbl">peak CPU</span><span class="val" style="color:${cpuColor(cpu)}">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</span></div>
-    <div class="cpubar"><i style="width:${Math.max(3, pct)}%;background:${barFor(cpu)};box-shadow:0 0 10px ${isHot(cpu) ? "rgba(255,107,107,.5)" : "rgba(125,211,252,.3)"}"></i></div>
-    <div class="kick" style="margin-top:4px">Open files</div>
-    <div class="files">${files.length ? files.map((f) => `<span class="fpill">${esc(base(f))}</span>`).join("") : '<span class="hint" style="color:var(--muted)">none captured</span>'}</div>
-    <div class="actions"><button class="inspect" id="inspect">Inspect</button><button class="kill" id="kill">Kill −9</button></div>`;
-  $("inspect").onclick = () => openInspect(n);
-  $("kill").onclick = () => killPid(n.pid, base(n.exe));
+  $("s-body").innerHTML = inspectorBody(n, null);  // instant; the trend graphs fill in on fetch
+  wireInspector(n);
+  try {
+    const d = await (await fetch(`/api/proc?pid=${n.pid}`)).json();
+    if (!d.error && selectedId === id) { $("s-body").innerHTML = inspectorBody(n, d); wireInspector(n); }
+  } catch (_) { /* keep the instant view */ }
 }
 
 // ---- toast ----
@@ -279,12 +301,12 @@ function ancestryChain(id) {
 }
 const fmtPct = (v) => (v == null ? "—" : v.toFixed(1) + "%");
 // tiny inline area+line chart of a value series (no libs); red when it peaks hot
-function sparkline(vals, w, h) {
+function sparkline(vals, w, h, hotAware) {
   vals = vals.filter((v) => v != null);
   if (vals.length < 2) return '<div class="nospark">not enough samples yet — give it a few seconds</div>';
   const max = Math.max(...vals, 1), step = w / (vals.length - 1);
   const line = vals.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 4) - 2).toFixed(1)}`).join(" ");
-  const col = max >= HOT ? "#f87171" : "#7dd3fc";
+  const col = (hotAware && max >= HOT) ? "#f87171" : "#7dd3fc";  // only CPU turns red at a hot peak
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="100%" height="${h}">
     <polygon points="0,${h} ${line} ${w},${h}" fill="${col}" opacity="0.10"></polygon>
     <polyline points="${line}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
@@ -312,7 +334,7 @@ function inspectHTML(n, d) {
       <div class="kick" style="margin-top:18px">Status</div>
       <div style="margin-top:6px">${st} <span style="color:var(--muted);font-size:12.5px">· ${d.sample_count} samples</span></div>
       <div class="kick" style="margin-top:16px">CPU over time</div>
-      <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.cpu), 300, 46)}</div>
+      <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.cpu), 300, 46, true)}</div>
       <div class="stats"><span>now <b style="color:${cpuColor(c.now)}">${fmtPct(c.now)}</b></span><span>peak <b style="color:${cpuColor(c.peak)}">${fmtPct(c.peak)}</b></span><span>avg <b>${fmtPct(c.avg)}</b></span></div>
       <div class="kick" style="margin-top:16px">Memory</div>
       <div class="stats"><span>now <b>${humanBytes(m.now)}</b></span><span>peak <b>${humanBytes(m.peak)}</b></span></div>`;
