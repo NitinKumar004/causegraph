@@ -81,10 +81,11 @@ def test_recorder_args_capture_all(home, tmp_path):
     assert args[args.index("-sample-min-cpu") + 1] == "0"
 
 
-def test_service_active_false_by_default(home):
-    # no login service installed in the test env — must report inactive, never raise
-    assert service.service_active() is False
-    assert service.service_active(service.UI_LABEL) is False
+def test_service_active_returns_bool_never_raises(home):
+    # service_active shells out to launchctl/systemctl — it must return a bool and never
+    # raise, regardless of whether a login service happens to be installed on this host.
+    assert isinstance(service.service_active(), bool)
+    assert isinstance(service.service_active(service.UI_LABEL), bool)
     assert service.service_supported() in (True, False)
 
 

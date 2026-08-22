@@ -1,7 +1,7 @@
 """graph_payload contract: nodes/edges/ids/labels, resolution, dedup, bounds, errors."""
 import sqlite3
 
-from causegraph.api.server import graph_payload
+from causegraph.api.server import graph_payload, proc_detail
 from causegraph.ingest import reader
 from causegraph.schema import Event
 
@@ -36,6 +36,7 @@ def test_pid_payload_shape_and_file_cause(filewatch_db):
     assert proc["kind"] == "process" and proc["label"] == "/usr/bin/python3 (pid 900)"
     assert proc["observed_spawn"] is True and proc["peak_cpu_pct"] == 40.0
     assert proc["spawn_ts"] == 2000  # start time for the "started" field
+    assert isinstance(proc["args"], list)  # full command line for the detail view
     fnode = next(n for n in p["nodes"] if n["id"] == "f:/etc/app.conf")
     assert fnode["kind"] == "file" and fnode["label"] == "app.conf"
     # the file->process edge carries rule + confidence
@@ -43,6 +44,16 @@ def test_pid_payload_shape_and_file_cause(filewatch_db):
     assert edge["target"] == "p:900:2000" and edge["rule"] == "file_watch"
     assert abs(edge["confidence"] - 0.72) < 1e-4
     assert p["truncated"] is False
+
+
+def test_proc_detail_shape(filewatch_db):
+    d = proc_detail(filewatch_db, 900)
+    assert d["pid"] == 900 and d["status"] in ("running", "exited")
+    assert d["cpu"]["peak"] == 40.0  # matches the attribution peak
+    assert isinstance(d["series"], list) and isinstance(d["children"], list)
+    assert d["sample_count"] >= 1
+    # unknown pid -> clean error, never raises
+    assert "error" in proc_detail(filewatch_db, 999999)
 
 
 def test_show_all_returns_whole_tree(graph_db):
