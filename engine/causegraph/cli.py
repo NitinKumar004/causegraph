@@ -3,6 +3,7 @@
     cg up                              # start the background recorder + serve the live UI
     cg down                            # stop the background recorder
     cg status                          # is it recording? how fresh is the data?
+    cg service install|uninstall       # auto-start the recorder on login (macOS/Linux)
     cg tree <pid> --db <path>          # the process and its descendants
     cg path <pid> --db <path>          # root-ward ancestry path to <pid>
     cg ui   --db <path>                # serve the local read-only causal-graph UI
@@ -85,12 +86,15 @@ def cmd_up(args: argparse.Namespace) -> int:
     from causegraph.api import server
 
     db = args.db or service.default_db()
-    try:
-        state, pid = service.start(db)
-    except FileNotFoundError as e:
-        print(str(e), file=sys.stderr)
-        return 1
-    print(f"recorder {state} (pid {pid}) → {db}", flush=True)
+    if service.service_active():
+        print(f"recorder: managed by the login service → {db}", flush=True)
+    else:
+        try:
+            state, pid = service.start(db)
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        print(f"recorder {state} (pid {pid}) → {db}", flush=True)
 
     httpd = server.serve(db, host=args.host, port=args.port)
     host, port = httpd.server_address
@@ -118,8 +122,33 @@ def _try_open(url: str) -> None:
 
 
 def cmd_down(args: argparse.Namespace) -> int:
+    if service.service_active():
+        print("recorder is managed by the login service — run `cg service uninstall` to stop it")
+        return 0
     state, pid = service.stop()
     print(f"recorder stopped (pid {pid})" if state == "stopped" else "no recorder was running")
+    return 0
+
+
+def cmd_service(args: argparse.Namespace) -> int:
+    db = args.db or service.default_db()
+    if args.action == "install":
+        if not service.service_supported():
+            print("auto-start on login is supported on macOS and Linux only", file=sys.stderr)
+            return 1
+        try:
+            path = service.install_service(db)
+        except (FileNotFoundError, RuntimeError) as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        print(f"installed login service → {path}")
+        print(f"recording to {db}; it now starts on every login. Stop it with `cg service uninstall`.")
+        return 0
+    if args.action == "uninstall":
+        service.uninstall_service()
+        print("login service removed (existing capture is kept)")
+        return 0
+    print(f"login service: {'active' if service.service_active() else 'not installed'}")
     return 0
 
 
@@ -127,7 +156,13 @@ def cmd_status(args: argparse.Namespace) -> int:
     db = args.db or service.default_db()
     s = service.status(db)
     pid = s["recorder_pid"]
-    print(f"recorder: {'running (pid %d)' % pid if pid else 'stopped'}")
+    if service.service_active():
+        rec = "running (login service)"
+    elif pid:
+        rec = f"running (pid {pid})"
+    else:
+        rec = "stopped"
+    print(f"recorder: {rec}")
     print(f"database: {db}")
     if s["events"] is None:
         print("events:   (database not created yet — run `cg up`)")
@@ -172,6 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("status", help="show recorder + capture status")
     st.add_argument("--db", default=None, help="events database (default: ~/.causegraph/live.db)")
     st.set_defaults(func=cmd_status)
+
+    sv = sub.add_parser("service", help="manage the auto-start-on-login recorder (macOS/Linux)")
+    sv.add_argument("action", choices=["install", "uninstall", "status"])
+    sv.add_argument("--db", default=None, help="events database (default: ~/.causegraph/live.db)")
+    sv.set_defaults(func=cmd_service)
 
     t = sub.add_parser("tree", help="print a process and its descendants")
     t.add_argument("pid", type=int)

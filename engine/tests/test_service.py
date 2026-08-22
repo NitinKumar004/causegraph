@@ -71,3 +71,17 @@ def test_running_pid_ignores_dead_pidfile(home):
 def test_status_shape(home):
     s = service.status(service.default_db())  # db doesn't exist yet
     assert s["recorder_pid"] is None and s["events"] is None
+
+
+def test_recorder_args_capture_all(home, tmp_path):
+    # the shared recorder command line must sample every process and run forever
+    args = service._recorder_args("/x/cged", str(tmp_path / "live.db"))
+    assert args[:2] == ["/x/cged", "-db"]
+    assert "-duration" in args and args[args.index("-duration") + 1] == "0"
+    assert args[args.index("-sample-min-cpu") + 1] == "0"
+
+
+def test_service_active_false_by_default(home):
+    # no login service installed in the test env — must report inactive, never raise
+    assert service.service_active() is False
+    assert service.service_supported() in (True, False)
