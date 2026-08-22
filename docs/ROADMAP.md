@@ -14,7 +14,8 @@
 | **M1a** — adaptive polling | process-diff cadence decoupled from resource sampling and made adaptive (`-poll-min`/`-poll-max`): fast during churn to catch short-lived processes, backs off when idle. No new permissions. Measured ~4× more short-lived processes captured vs fixed 2s | [plans/causegraph-M1a-adaptive-poll.md](plans/causegraph-M1a-adaptive-poll.md) |
 | **M4** — resource attribution | peak CPU/RSS per process instance (pid-reuse-safe), powering the "which process is responsible" ranking the UI surfaces | [plans/causegraph-M4-M5.md](plans/causegraph-M4-M5.md) |
 | **M3f + M4 core** | **fsnotify** `file.change` capture (no root) + the first **inferred (<1.0) edge** `file_watch` (a file changed → likely triggered a process); `scoring.py`; precision traversal; the UI shows the file cause | [plans/causegraph-M3f-M4.md](plans/causegraph-M3f-M4.md) + [adr/0001](adr/0001-graph-node-types-and-edge-scoring.md) |
-| **M6** — web UI | read-only local viewer: `cg ui` serves a page (vendored cytoscape.js, offline) that renders the causal graph for a pid — process vs file nodes, edges coloured by rule+confidence, payload bounded (`max_nodes`); stdlib http.server API bound to 127.0.0.1 | [plans/causegraph-M6.md](plans/causegraph-M6.md) |
+| **M6** — web UI | read-only local viewer: `cg ui` serves a page (vendored cytoscape.js, offline) that renders the causal graph for a pid — process vs file nodes, edges coloured by rule+confidence, payload bounded (`max_nodes`); stdlib http.server API bound to 127.0.0.1. Live auto-refresh + live/frozen indicator; monochrome UI; responsive | [plans/causegraph-M6.md](plans/causegraph-M6.md) |
+| **M7** — one-command use | `cg up` runs a **detached background recorder** (survives the shell, state in `~/.causegraph/`) and serves the live UI; `cg down` / `cg status`. Makes it usable by another person without babysitting a terminal | [plans/causegraph-M7-one-command.md](plans/causegraph-M7-one-command.md) |
 
 ## Left to build
 
@@ -26,12 +27,13 @@
 
 ### The unprivileged path (ship-without-approvals track)
 CauseGraph can be a complete, distributable product using only no-root/no-entitlement capture,
-trading fidelity (not features) vs native EDR-grade backends. **M1a (adaptive polling) is the
-first step.** Next unprivileged wins: real-time process events via OS notification APIs that
-don't need root (macOS `kqueue` `EVFILT_PROC`/`NOTE_TRACK`, Linux netlink proc connector —
-*verify the privilege on each platform before building*), then package `cged` as an always-on
-background service (launchd/systemd). Native capture (M3-full) stays an optional "pro" backend
-behind the same `Collector` seam.
+trading fidelity (not features) vs native EDR-grade backends. Shipped so far: **M1a (adaptive
+polling)** and **M7 (`cg up` — always-on detached recorder + one-command UI)**. Next unprivileged
+wins: real-time process events via OS notification APIs that don't need root (macOS `kqueue`
+`EVFILT_PROC`/`NOTE_TRACK`, Linux netlink proc connector — *verify the privilege on each platform
+before building*), then **auto-start on login** (launchd LaunchAgent / systemd --user unit) so the
+recorder survives reboot, and **prebuilt binaries** so non-developers skip `make build`. Native
+capture (M3-full) stays an optional "pro" backend behind the same `Collector` seam.
 
 ### Smaller enhancements
 - **`actor.cwd` capture** — so `file_watch` matches *relative*-path args (today: `exe` + absolute args only).

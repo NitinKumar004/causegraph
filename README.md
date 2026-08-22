@@ -30,28 +30,32 @@ make build     # compiles the daemon to bin/cged and sets up the Python engine
 That's it. `make build` creates a self-contained Python environment under `engine/.venv`, so it
 won't touch your system Python. (Optional: `make test` runs the full suite to confirm all is well.)
 
-## Using it
-
-**1. Record what your machine is doing** for a few seconds. This writes a capture to a database
-file — pick any path you like:
+## Using it — one command
 
 ```bash
-./bin/cged -db /tmp/cg.db -sample-min-cpu 0 -sample-min-rss 0 -duration 8s
+./scripts/cg up          # starts a background recorder + opens the live UI
 ```
 
-*(Add `-watch "$HOME/some/dir"` to also record file changes in a folder — that's what lets it
-link "this file changed → that process woke up".)*
+That's the whole thing. `cg up`:
+- starts a **background recorder** that keeps capturing even after you close the terminal
+  (state lives in `~/.causegraph/`),
+- serves the viewer and opens **http://127.0.0.1:8765** in your browser.
 
-**2. Open the viewer:**
+You'll see every process on the left (sorted by CPU), the causal graph in the middle, and details
+on the right. It **refreshes itself every few seconds** — the header shows `live` while the
+recorder is running. Click any process to trace where it came from and what it spawned; the
+hottest one is picked for you.
 
 ```bash
-./scripts/cg ui --db /tmp/cg.db
+./scripts/cg status      # is it recording? how fresh is the data?
+./scripts/cg down        # stop the background recorder
 ```
 
-Now visit **http://127.0.0.1:8765** in your browser. You'll see every process on the left
-(sorted by CPU), the causal graph in the middle, and details on the right. Click any process to
-trace where it came from and what it spawned; the hottest one is selected for you. Prefer the
-terminal? `./scripts/cg tree <pid> --db /tmp/cg.db` prints the same tree as text.
+`Ctrl-C` closes the viewer but leaves the recorder running (that's the point — it's a flight
+recorder). Use `cg down` to actually stop capturing.
+
+Prefer the terminal? `./scripts/cg tree <pid>` and `./scripts/cg path <pid>` print the tree as
+text (add `--db ~/.causegraph/live.db`).
 
 ## Where things stand
 

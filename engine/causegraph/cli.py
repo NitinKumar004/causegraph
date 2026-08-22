@@ -1,5 +1,8 @@
 """cg — the CauseGraph CLI (architecture.md §5.5). Commands:
 
+    cg up                              # start the background recorder + serve the live UI
+    cg down                            # stop the background recorder
+    cg status                          # is it recording? how fresh is the data?
     cg tree <pid> --db <path>          # the process and its descendants
     cg path <pid> --db <path>          # root-ward ancestry path to <pid>
     cg ui   --db <path>                # serve the local read-only causal-graph UI
@@ -18,6 +21,7 @@ from typing import Optional, Sequence
 
 import networkx as nx
 
+from causegraph import service
 from causegraph.graph import builder, traverse
 from causegraph.graph.model import NodeKey
 from causegraph.ingest import reader
@@ -73,6 +77,68 @@ def cmd_ui(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_up(args: argparse.Namespace) -> int:
+    """One command to use it: ensure a background recorder is capturing, then serve
+    the live UI. Ctrl-C stops only the UI — the recorder keeps recording."""
+    import threading
+
+    from causegraph.api import server
+
+    db = args.db or service.default_db()
+    try:
+        state, pid = service.start(db)
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print(f"recorder {state} (pid {pid}) → {db}", flush=True)
+
+    httpd = server.serve(db, host=args.host, port=args.port)
+    host, port = httpd.server_address
+    url = f"http://{host}:{port}"
+    print(f"UI → {url}", flush=True)
+    print("Ctrl-C stops the UI; the recorder keeps recording (`cg status` / `cg down`).", flush=True)
+    if not args.no_open:
+        threading.Timer(0.6, lambda: _try_open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.shutdown()
+    print("\nUI stopped. Recorder still running → `cg down` to stop it.")
+    return 0
+
+
+def _try_open(url: str) -> None:
+    import webbrowser
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass  # headless / no browser — the URL is already printed
+
+
+def cmd_down(args: argparse.Namespace) -> int:
+    state, pid = service.stop()
+    print(f"recorder stopped (pid {pid})" if state == "stopped" else "no recorder was running")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    db = args.db or service.default_db()
+    s = service.status(db)
+    pid = s["recorder_pid"]
+    print(f"recorder: {'running (pid %d)' % pid if pid else 'stopped'}")
+    print(f"database: {db}")
+    if s["events"] is None:
+        print("events:   (database not created yet — run `cg up`)")
+    else:
+        age = s["latest_age_s"]
+        fresh = "live" if (age is not None and age < 10) else "frozen/stale"
+        agestr = f"{age:.0f}s ago" if age is not None else "—"
+        print(f"events:   {s['events']} (newest {agestr}, {fresh})")
+    return 0
+
+
 def cmd_load(args: argparse.Namespace) -> int:
     events = []
     with open(args.jsonl, encoding="utf-8") as f:
@@ -92,6 +158,20 @@ def cmd_load(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cg", description="CauseGraph — trace why a process exists.")
     sub = p.add_subparsers(dest="command", required=True)
+
+    up = sub.add_parser("up", help="start the background recorder and serve the live UI")
+    up.add_argument("--db", default=None, help="events database (default: ~/.causegraph/live.db)")
+    up.add_argument("--host", default="127.0.0.1", help="bind host (loopback only by default)")
+    up.add_argument("--port", type=int, default=8765, help="bind port (0 = ephemeral)")
+    up.add_argument("--no-open", action="store_true", help="don't open a browser")
+    up.set_defaults(func=cmd_up)
+
+    dn = sub.add_parser("down", help="stop the background recorder")
+    dn.set_defaults(func=cmd_down)
+
+    st = sub.add_parser("status", help="show recorder + capture status")
+    st.add_argument("--db", default=None, help="events database (default: ~/.causegraph/live.db)")
+    st.set_defaults(func=cmd_status)
 
     t = sub.add_parser("tree", help="print a process and its descendants")
     t.add_argument("pid", type=int)
