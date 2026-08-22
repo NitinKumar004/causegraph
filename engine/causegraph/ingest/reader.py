@@ -63,6 +63,29 @@ def read_events(db_path: str) -> Iterator[Event]:
         conn.close()
 
 
+def read_events_since(db_path: str, after_seq: int) -> Iterator[tuple[int, Event]]:
+    """Yield (seq, Event) for rows with seq > after_seq, in write order — so a caller
+    can read only what's new since a prior read instead of re-parsing the whole store."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute("SELECT seq, data FROM events WHERE seq > ? ORDER BY seq", (after_seq,)):
+            yield row["seq"], Event.from_dict(json.loads(row["data"]))
+    finally:
+        conn.close()
+
+
+def max_seq(db_path: str) -> int:
+    """Highest seq in the store (0 if empty) — a cheap indexed lookup used to detect
+    whether anything new was written (and whether the DB was reset)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute("SELECT MAX(seq) FROM events").fetchone()
+        return row[0] or 0
+    finally:
+        conn.close()
+
+
 def schema_version(db_path: str) -> str | None:
     conn = sqlite3.connect(db_path)
     try:

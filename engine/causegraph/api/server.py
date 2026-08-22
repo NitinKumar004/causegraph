@@ -17,29 +17,39 @@ from causegraph.graph import attribution, builder, traverse
 from causegraph.graph.model import is_process_key
 from causegraph.ingest import reader
 
-# The engine rebuilds the whole DAG from the event log per query — ~4s on a 500MB/800k-event
-# capture. One page load fires many queries (list + several family probes + auto-refresh), so
-# cache the built+annotated graph keyed by the DB's mtime/size: all requests inside one write
-# window (the recorder appends every ~2s) reuse a single build instead of rebuilding N times.
-_CACHE: dict = {"key": None, "events": None, "g": None}
+# Reading+parsing the whole event log dominates query cost (~4.3s to parse ~1M events;
+# build+annotate is only ~0.8s). So we keep the parsed events in memory and read only NEW
+# rows (seq > last) each request, then rebuild+annotate from memory. First request pays the
+# full parse; every one after reads a tiny delta — fast even while the recorder writes.
+_CACHE: dict = {"path": None, "events": None, "last_seq": 0, "g": None}
 _CACHE_LOCK = threading.Lock()
 
 
+def _rebuild(events):
+    g = builder.build(events)
+    attribution.annotate(g, events)
+    return g
+
+
 def _load(db):
-    """(events, annotated graph) for db, reusing a cached build until the file changes."""
-    try:
-        st = os.stat(db)
-        key = (os.path.abspath(db), st.st_mtime_ns, st.st_size)
-    except OSError:
-        key = None
+    """(events, annotated graph) for db. Incremental: reuse the in-memory events and append
+    only rows written since the last read; full reload if the DB was reset/replaced."""
+    ab = os.path.abspath(db)
     with _CACHE_LOCK:
-        if key is not None and _CACHE["key"] == key:
-            return _CACHE["events"], _CACHE["g"]
-        events = list(reader.read_events(db))
-        g = builder.build(events)
-        attribution.annotate(g, events)
-        _CACHE.update(key=key, events=events, g=g)
-        return events, g
+        top = reader.max_seq(db)  # cheap indexed MAX(seq); also detects reset (seq restarts)
+        fresh = _CACHE["path"] != ab or top < _CACHE["last_seq"]
+        if fresh:
+            events = list(reader.read_events(db))
+            g = _rebuild(events)
+            _CACHE.update(path=ab, events=events, last_seq=top, g=g)
+            return events, g
+        if top == _CACHE["last_seq"]:
+            return _CACHE["events"], _CACHE["g"]  # nothing new — reuse the built graph
+        delta = list(reader.read_events_since(db, _CACHE["last_seq"]))
+        _CACHE["events"].extend(e for _, e in delta)
+        _CACHE["last_seq"] = top
+        _CACHE["g"] = _rebuild(_CACHE["events"])
+        return _CACHE["events"], _CACHE["g"]
 
 
 def _latest_ts(db: str):
