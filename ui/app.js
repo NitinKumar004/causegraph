@@ -391,28 +391,44 @@ async function killPid(pid, name) {
 }
 
 // ================= boot + controls =================
+// Show the empty/disconnected overlay with a specific, actionable description.
+function emptyState(title, html) {
+  const el = $("empty");
+  el.querySelector("h2").textContent = title;
+  el.querySelector("p").innerHTML = html;
+  overlay("empty");
+  $("mstatus").className = "mstatus quiet";
+  $("mstatus").innerHTML = `<span class="dotq"></span>${esc(title)}`;
+}
+
 async function loadAll() {
+  overlay("loading");  // spinner up front — the first read can take a moment on a big capture
   try { const m = await (await fetch("/api/meta")).json(); if (m.db) { $("dbname").textContent = m.db; $("art-db").textContent = m.db; } if (m.latest_ts != null) lastTs = m.latest_ts; } catch (_) {}
+  let d;
   try {
     const r = await fetch("/api/graph?all=1&max_nodes=20000");  // the list wants every process, not the graph cap
-    const d = await r.json();
-    allProcs = (d.nodes || []).filter((n) => n.kind === "process");
-    $("art-sub").textContent = `sqlite · ${allProcs.length} processes${d.truncated ? "+" : ""}`;
-    renderList();
-    if (!allProcs.length) { overlay("empty"); return; }
-    // default view: the hottest process that has a real tree (ancestry / children /
-    // file cause), so we land on something meaningful rather than a lone node.
-    overlay("loading");
-    const cands = allProcs.filter(alive).sort((a, b) => curCpu(b) - curCpu(a)).slice(0, 8);
-    for (const c of cands) {
-      try {
-        const r = await fetch(`/api/graph?pid=${c.pid}&family=1&min_confidence=0.5`);
-        const d = await r.json();
-        if (r.ok && !d.error && d.nodes.length > 1) { currentPid = c.pid; renderGraph(d); const hit = d.nodes.find((x) => x.pid === c.pid && x.kind === "process"); selectNode(hit ? hit.id : d.culprit); return; }
-      } catch (_) {}
-    }
-    focusPid(cands[0].pid);  // fallback: hottest (may be a lone node)
-  } catch (_) { overlay("empty"); }
+    d = await r.json();
+    if (!r.ok || d.error) throw new Error(d && d.error);
+  } catch (e) {
+    emptyState("Can't read the capture", "The recorder's database couldn't be read. Is it running? Check with <code>cg status</code>, or start it with <code>cg up</code>.");
+    return;
+  }
+  allProcs = (d.nodes || []).filter((n) => n.kind === "process");
+  $("art-sub").textContent = `sqlite · ${allProcs.length} processes`;
+  renderList();
+  const live = allProcs.filter(alive);
+  if (!allProcs.length) { emptyState("Nothing captured yet", "The recorder hasn't written any events. Start it with <code>cg up</code> — then this fills in within a few seconds."); return; }
+  if (!live.length) { emptyState("Recorder looks stopped", "The capture has history but nothing was sampled recently — the recorder isn't writing. Restart it with <code>cg up</code>."); return; }
+  // default view: the hottest LIVE process that has a real tree, so we land on something meaningful
+  const cands = live.sort((a, b) => curCpu(b) - curCpu(a)).slice(0, 6);
+  for (const c of cands) {
+    try {
+      const r = await fetch(`/api/graph?pid=${c.pid}&family=1&min_confidence=0.5`);
+      const g = await r.json();
+      if (r.ok && !g.error && g.nodes.length > 1) { currentPid = c.pid; renderGraph(g); const hit = g.nodes.find((x) => x.pid === c.pid && x.kind === "process"); selectNode(hit ? hit.id : g.culprit); return; }
+    } catch (_) {}
+  }
+  focusPid(cands[0].pid);  // fallback: hottest (may be a lone node)
 }
 
 // Search is a pure filter. Enter focuses the top match: a number -> that pid;

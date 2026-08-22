@@ -9,12 +9,37 @@ import json
 import os
 import signal
 import sqlite3
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from causegraph.graph import attribution, builder, traverse
 from causegraph.graph.model import is_process_key
 from causegraph.ingest import reader
+
+# The engine rebuilds the whole DAG from the event log per query — ~4s on a 500MB/800k-event
+# capture. One page load fires many queries (list + several family probes + auto-refresh), so
+# cache the built+annotated graph keyed by the DB's mtime/size: all requests inside one write
+# window (the recorder appends every ~2s) reuse a single build instead of rebuilding N times.
+_CACHE: dict = {"key": None, "events": None, "g": None}
+_CACHE_LOCK = threading.Lock()
+
+
+def _load(db):
+    """(events, annotated graph) for db, reusing a cached build until the file changes."""
+    try:
+        st = os.stat(db)
+        key = (os.path.abspath(db), st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = None
+    with _CACHE_LOCK:
+        if key is not None and _CACHE["key"] == key:
+            return _CACHE["events"], _CACHE["g"]
+        events = list(reader.read_events(db))
+        g = builder.build(events)
+        attribution.annotate(g, events)
+        _CACHE.update(key=key, events=events, g=g)
+        return events, g
 
 
 def _latest_ts(db: str):
@@ -121,9 +146,7 @@ def proc_detail(db, pid, max_series=90) -> dict:
     """Rich detail for one process instance, for the Inspect view: lifecycle status,
     CPU/RSS now/peak/avg, a resource sample SERIES (for a sparkline), and children it
     spawned. Read-only over the captured events — no live OS query."""
-    events = list(reader.read_events(db))
-    g = builder.build(events)
-    attribution.annotate(g, events)
+    events, g = _load(db)
     key = traverse.latest_instance(g, pid)
     if key is None:
         return {"error": f"no process with pid {pid} in the capture window"}
@@ -155,9 +178,7 @@ def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES,
     truncated}, or {"error": msg}. With show_all, return the whole process tree.
     Bound (max_nodes) prevents serializing an unbounded graph."""
     max_nodes = max(1, int(max_nodes))  # a payload always has at least the culprit; avoids anc[-0:]
-    events = list(reader.read_events(db))
-    g = builder.build(events)
-    attribution.annotate(g, events)
+    events, g = _load(db)
 
     if show_all:
         return _all_payload(g, max_nodes)
