@@ -36,6 +36,7 @@ def test_pid_payload_shape_and_file_cause(filewatch_db):
     assert proc["kind"] == "process" and proc["label"] == "/usr/bin/python3 (pid 900)"
     assert proc["observed_spawn"] is True and proc["peak_cpu_pct"] == 40.0
     assert proc["spawn_ts"] == 2000  # start time for the "started" field
+    assert isinstance(proc["args"], list)  # full command line for the detail view
     fnode = next(n for n in p["nodes"] if n["id"] == "f:/etc/app.conf")
     assert fnode["kind"] == "file" and fnode["label"] == "app.conf"
     # the file->process edge carries rule + confidence

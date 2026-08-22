@@ -193,9 +193,72 @@ function selectNode(id) {
     <div class="kick" style="margin-top:4px">Open files</div>
     <div class="files">${files.length ? files.map((f) => `<span class="fpill">${esc(base(f))}</span>`).join("") : '<span class="hint" style="color:var(--muted)">none captured</span>'}</div>
     <div class="actions"><button class="inspect" id="inspect">Inspect</button><button class="kill" id="kill">Kill −9</button></div>`;
-  $("inspect").onclick = () => focusPid(n.pid);
+  $("inspect").onclick = () => openInspect(n);
   $("kill").onclick = () => killPid(n.pid, base(n.exe));
 }
+
+// ---- toast ----
+let snackT = 0;
+function toast(msg, kind) {
+  const el = $("snack");
+  el.textContent = msg;
+  el.classList.remove("ok", "err");
+  if (kind) el.classList.add(kind);
+  el.classList.add("show");
+  clearTimeout(snackT);
+  snackT = setTimeout(() => el.classList.remove("show"), 3200);
+}
+
+// ---- Inspect: a full "explain this process" view ----
+function ancestryChain(id) {
+  const chain = [], seen = new Set();
+  let cur = id;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur); chain.push(cur);
+    const e = (graphData ? graphData.edges : []).find((x) => x.rule === "spawn" && x.target === cur);
+    cur = e ? e.source : null;
+  }
+  return chain.reverse();  // root → … → this
+}
+function inspectHTML(n) {
+  const nm = base(n.exe), cpu = n.peak_cpu_pct;
+  const cmd = n.args && n.args.length ? n.args.join(" ") : (n.exe || "—");
+  const chain = ancestryChain(n.id).map((id) => nodeById[id]).filter((x) => x && x.pid != null);
+  const lineage = chain.map((x) =>
+    `<span class="chip${x.id === n.id ? " self" : ""}">${esc(base(x.exe))} <i>${x.pid}</i></span>`
+  ).join('<span class="arr">→</span>');
+  const causes = (graphData ? graphData.edges : [])
+    .filter((e) => e.rule === "file_watch" && e.target === n.id)
+    .map((e) => ({ path: (nodeById[e.source] || {}).path, conf: e.confidence }))
+    .filter((c) => c.path);
+  return `<button class="x" aria-label="Close">×</button>
+    <div class="kick">Process</div>
+    <h3>${esc(nm)}</h3>
+    <div class="path">${esc(n.exe || "?")}</div>
+    <div class="kick" style="margin-top:18px">Command</div>
+    <div class="cmd">${esc(cmd)}</div>
+    <dl class="kv" style="margin-top:18px">
+      <dt>pid</dt><dd>${n.pid}</dd>
+      <dt>user</dt><dd>${esc(n.user) || "—"}</dd>
+      <dt>started</dt><dd>${fmtTime(n.spawn_ts)}</dd>
+      <dt>peak RSS</dt><dd>${humanBytes(n.peak_rss_bytes)}</dd>
+      <dt>peak CPU</dt><dd style="color:${cpuColor(cpu)};font-weight:700">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</dd>
+    </dl>
+    <div class="kick">Lineage <span style="color:var(--dim);font-weight:500;text-transform:none;letter-spacing:0">— what launched it</span></div>
+    <div class="lineage">${lineage || '<span style="color:var(--muted);font-size:12.5px">no captured parent</span>'}</div>
+    <div class="kick" style="margin-top:18px">Triggered by</div>
+    ${causes.length
+      ? causes.map((c) => `<div class="cause"><span class="fpath">${esc(c.path)}</span><span class="conf">${c.conf != null ? "conf " + c.conf.toFixed(2) : ""}</span></div>`).join("")
+      : '<div style="color:var(--muted);font-size:12.5px">no file cause captured</div>'}`;
+}
+function openInspect(n) {
+  $("sheet").innerHTML = inspectHTML(n);
+  $("modal").classList.add("show");
+  $("sheet").querySelector(".x").onclick = closeInspect;
+}
+function closeInspect() { $("modal").classList.remove("show"); }
+$("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeInspect(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInspect(); });
 function showFile(n) {
   $("s-name").textContent = base(n.path); $("s-path").className = "sel-path"; $("s-path").textContent = n.path || "";
   const conf = (graphData.edges.find((e) => e.rule === "file_watch" && e.source === n.id) || {}).conf;
@@ -222,9 +285,10 @@ async function killPid(pid, name) {
   try {
     const r = await fetch(`/api/kill?pid=${pid}`, { method: "POST", headers: { "X-CauseGraph": "1" } });
     const d = await r.json();
-    if (!r.ok || d.error) { alert(d.error || `failed (${r.status})`); return; }
-    setTimeout(loadAll, 400);
-  } catch (e) { alert(`request failed: ${e}`); }
+    if (!r.ok || d.error) { toast(d.error || `kill failed (${r.status})`, "err"); return; }
+    toast(`Killed ${name} (pid ${pid})`, "ok");
+    setTimeout(refreshData, 500);  // refresh in place — stay on this neighborhood, don't jump
+  } catch (e) { toast(`request failed: ${e}`, "err"); }
 }
 
 // ================= boot + controls =================

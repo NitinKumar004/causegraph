@@ -51,6 +51,7 @@ def _node_json(g, key) -> dict:
             "id": _node_id(key), "kind": "process",
             "label": f"{exe} (pid {n['pid']})",
             "pid": n["pid"], "exe": n["exe"], "user": n["user"],
+            "args": list(n.get("args") or []),  # full command line, for the detail view
             "observed_spawn": n["observed_spawn"], "spawn_ts": n["spawn_ts"],
             "peak_cpu_pct": n["peak_cpu_pct"], "peak_rss_bytes": n["peak_rss_bytes"],
         }
