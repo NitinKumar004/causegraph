@@ -123,30 +123,52 @@ def _emit(g, keys, min_confidence, culprit):
     return {"culprit": _node_id(culprit), "nodes": nodes, "edges": edges}
 
 
-SIBLING_CAP = 8  # immediate siblings shown for context; a root child (e.g. launchd
-                 # with hundreds of kids) must not flood the focused family view.
+SIBLING_CAP = 8   # immediate siblings shown for context
+CHILD_CAP = 12    # children shown per parent — a process with hundreds of kids (cged,
+                  # launchd) must stay readable, so show the busiest few, not all
+FAMILY_MAX = 60   # overall readable cap for the family view (hundreds of nodes in one
+                  # breadthfirst row is unreadable), regardless of max_nodes
+
+
+def _children_by_cpu(g, key):
+    """Spawn children of key, busiest first — so a capped view keeps the ones that matter."""
+    return sorted(_spawn_children(g, key), key=lambda k: -(g.nodes[k].get("peak_cpu_pct") or 0))
 
 
 def _family_payload(g, culprit, min_confidence, max_nodes) -> dict:
-    """The selection's focused causal family: its root-ward ancestry spine, its file
-    causes, its own descendants, and a bounded set of immediate siblings — capped at
-    max_nodes. We add causes/subtree BEFORE siblings so a high-fanout parent (launchd
-    has 500+ children) can never crowd the actual causal story out of the budget."""
+    """The selection's focused, READABLE causal family: root-ward ancestry spine, file
+    causes, a bounded slice of its subtree (top CHILD_CAP children per parent), and a few
+    siblings — capped at FAMILY_MAX so a high-fanout node never floods the graph."""
+    from collections import deque
+    cap = min(max_nodes, FAMILY_MAX)
     sel = {}  # id -> key, insertion-ordered
+    truncated = False
     def add(k):
-        if len(sel) < max_nodes:
-            sel.setdefault(_node_id(k), k)
+        nonlocal truncated
+        if len(sel) >= cap:
+            truncated = True
+            return False
+        sel.setdefault(_node_id(k), k)
+        return True
     anc = traverse.ancestry_path(g, culprit)  # [root, ..., culprit] — a chain, not a fan
     for k in anc:
         add(k)
     for f, _conf in traverse.causes(g, culprit, min_confidence):  # the causal story first
         add(f)
-    for d in traverse.descendants_bfs(g, culprit):  # selection's own subtree
-        add(d)
+    dq = deque([culprit])  # bounded BFS of the subtree: busiest CHILD_CAP children per parent
+    while dq and len(sel) < cap:
+        kids = _children_by_cpu(g, dq.popleft())
+        if len(kids) > CHILD_CAP:
+            truncated = True
+        for c in kids[:CHILD_CAP]:
+            if add(c):
+                dq.append(c)
     if len(anc) >= 2:  # immediate siblings only, capped, for context
-        for c in sorted(_spawn_children(g, anc[-2]))[:SIBLING_CAP]:
+        sibs = _children_by_cpu(g, anc[-2])
+        if len(sibs) > SIBLING_CAP:
+            truncated = True
+        for c in sibs[:SIBLING_CAP]:
             add(c)
-    truncated = len(sel) >= max_nodes
     p = _emit(g, sel.values(), min_confidence, culprit)
     p["truncated"] = truncated
     return p

@@ -80,7 +80,7 @@ function buildCards() {
     const div = document.createElement("div");
     div.className = "gnode" + (n.kind === "file" ? " file" : "") + (n.kind === "process" && isHot(curCpu(n)) ? " hot" : "");
     div.innerHTML = nodeCardHTML(n);
-    div.addEventListener("click", (e) => { e.stopPropagation(); selectNode(n.id); });
+    div.addEventListener("click", (e) => { e.stopPropagation(); selectNode(n.id); ensurePanelOpen(); });
     div.addEventListener("mouseenter", () => hoverNode(cyn));
     div.addEventListener("mouseleave", unhover);
     layer.appendChild(div); cards[n.id] = div;
@@ -198,7 +198,7 @@ function renderProcRows(el, rows) {
     div.innerHTML = `<span class="badge">${esc(abbrev(nm))}</span>
       <div class="info"><div class="nm">${esc(nm)}</div><div class="pid">${n.pid}</div></div>
       <div class="met"><div class="cpu" style="color:${cpuColor(cpu)}">${cpu.toFixed(1)}%</div><div class="mem">${humanBytes(curMem(n))}</div></div>`;
-    div.addEventListener("click", () => focusPid(n.pid));
+    div.addEventListener("click", () => { focusPid(n.pid); ensurePanelOpen(); });
     el.appendChild(div);
   }
 }
@@ -219,7 +219,7 @@ function renderAppRows(el, rows) {
     div.innerHTML = `<span class="badge">${esc(abbrev(g.app))}</span>
       <div class="info"><div class="nm">${esc(g.app)}</div><div class="pid">${g.procs.length} process${g.procs.length === 1 ? "" : "es"}</div></div>
       <div class="met"><div class="cpu" style="color:${cpuColor(g.cpu)}">${g.cpu.toFixed(1)}%</div><div class="mem">${humanBytes(g.mem)}</div></div>`;
-    div.addEventListener("click", () => focusPid(hottest.pid));
+    div.addEventListener("click", () => { focusPid(hottest.pid); ensurePanelOpen(); });
     el.appendChild(div);
   }
 }
@@ -454,6 +454,16 @@ $("panelToggle").addEventListener("click", () => {
   syncFor(500);
   setTimeout(() => { cy.resize(); refit(); }, 210);
 });
+// Clicking a process should always reveal its details — so if the inspector was
+// collapsed, open it (otherwise the click looks like it did nothing).
+function ensurePanelOpen() {
+  const m = document.querySelector("main");
+  if (!m.classList.contains("rcollapsed")) return;
+  m.classList.remove("rcollapsed");
+  $("panelToggle").title = "Hide inspector";
+  syncFor(500);
+  setTimeout(() => { cy.resize(); refit(); }, 210);
+}
 
 // ---- responsive: process-list drawer + graph refit on resize ----
 const NARROW = 940;                       // below this the inspector is a slide-over
