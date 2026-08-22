@@ -29,15 +29,18 @@ mkdir -p "$DEST"
 curl -fsSL "$url" | tar -xz -C "$DEST"
 
 app="$DEST/$name"
+CG="$app/scripts/cg"
 echo "installed to $app"
 
-# convenience symlink if ~/.local/bin exists / is on PATH
-if [ -d "$HOME/.local/bin" ]; then
-  ln -sf "$app/scripts/cg" "$HOME/.local/bin/cg"
-  echo "linked: cg -> ~/.local/bin/cg"
-  echo
-  echo "run:  cg up        (ensure ~/.local/bin is on your PATH)"
+# convenience symlink if ~/.local/bin exists
+[ -d "$HOME/.local/bin" ] && ln -sf "$CG" "$HOME/.local/bin/cg" && echo "linked: cg -> ~/.local/bin/cg"
+
+# turnkey: set it up to run automatically (recorder + dashboard as login services)
+echo
+echo "setting up CauseGraph to run automatically..."
+if "$CG" setup; then
+  :
 else
   echo
-  echo "run:  $app/scripts/cg up"
+  echo "auto-setup was skipped — start it yourself with:  $CG up" >&2
 fi

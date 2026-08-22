@@ -1,9 +1,10 @@
 """cg — the CauseGraph CLI (architecture.md §5.5). Commands:
 
-    cg up                              # start the background recorder + serve the live UI
+    cg setup                           # turnkey: recorder + UI as login services, opens the dashboard
+    cg teardown                        # remove what `cg setup` installed
+    cg up                              # one-off: background recorder + serve the live UI
     cg down                            # stop the background recorder
     cg status                          # is it recording? how fresh is the data?
-    cg service install|uninstall       # auto-start the recorder on login (macOS/Linux)
     cg tree <pid> --db <path>          # the process and its descendants
     cg path <pid> --db <path>          # root-ward ancestry path to <pid>
     cg ui   --db <path>                # serve the local read-only causal-graph UI
@@ -86,6 +87,11 @@ def cmd_up(args: argparse.Namespace) -> int:
     from causegraph.api import server
 
     db = args.db or service.default_db()
+    if service.service_active(service.UI_LABEL):  # `cg setup` is managing everything
+        url = f"http://{args.host}:{args.port}"
+        print(f"CauseGraph is already running (managed by `cg setup`) → {url}")
+        _try_open(url)
+        return 0
     if service.service_active():
         print(f"recorder: managed by the login service → {db}", flush=True)
     else:
@@ -130,6 +136,35 @@ def cmd_down(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_setup(args: argparse.Namespace) -> int:
+    """Turnkey: install the recorder + UI as login services and open the dashboard.
+    After this the user just visits the URL — nothing to run, survives reboot."""
+    db = args.db or service.default_db()
+    if not service.service_supported():
+        print("cg setup is supported on macOS and Linux only", file=sys.stderr)
+        return 1
+    try:
+        url = service.setup(db, "127.0.0.1", args.port)
+    except (FileNotFoundError, RuntimeError) as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print("CauseGraph is set up and self-managing:")
+    print(f"  recording  → {db}")
+    print(f"  dashboard  → {url}")
+    print("Both start automatically at login. Remove with `cg teardown`.")
+    if not args.no_open:
+        import time
+        time.sleep(1.2)  # let the UI service bind before we open it
+        _try_open(url)
+    return 0
+
+
+def cmd_teardown(args: argparse.Namespace) -> int:
+    service.teardown()
+    print("CauseGraph login services removed. Captured data kept in ~/.causegraph.")
+    return 0
+
+
 def cmd_service(args: argparse.Namespace) -> int:
     db = args.db or service.default_db()
     if args.action == "install":
@@ -156,14 +191,16 @@ def cmd_status(args: argparse.Namespace) -> int:
     db = args.db or service.default_db()
     s = service.status(db)
     pid = s["recorder_pid"]
-    if service.service_active():
+    if service.service_active(service.RECORDER_LABEL):
         rec = "running (login service)"
     elif pid:
         rec = f"running (pid {pid})"
     else:
         rec = "stopped"
-    print(f"recorder: {rec}")
-    print(f"database: {db}")
+    print(f"recorder:  {rec}")
+    if service.service_active(service.UI_LABEL):
+        print("dashboard: running (login service)")
+    print(f"database:  {db}")
     if s["events"] is None:
         print("events:   (database not created yet — run `cg up`)")
     else:
@@ -193,6 +230,15 @@ def cmd_load(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cg", description="CauseGraph — trace why a process exists.")
     sub = p.add_subparsers(dest="command", required=True)
+
+    setup_p = sub.add_parser("setup", help="turnkey: run recorder + UI as login services and open the dashboard")
+    setup_p.add_argument("--db", default=None, help="events database (default: ~/.causegraph/live.db)")
+    setup_p.add_argument("--port", type=int, default=8765, help="dashboard port")
+    setup_p.add_argument("--no-open", action="store_true", help="don't open a browser")
+    setup_p.set_defaults(func=cmd_setup)
+
+    td = sub.add_parser("teardown", help="remove the login services installed by `cg setup`")
+    td.set_defaults(func=cmd_teardown)
 
     up = sub.add_parser("up", help="start the background recorder and serve the live UI")
     up.add_argument("--db", default=None, help="events database (default: ~/.causegraph/live.db)")

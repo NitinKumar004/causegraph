@@ -148,114 +148,174 @@ def status(db: str) -> dict:
     return info
 
 
-# ---- auto-start on login: a launchd LaunchAgent (macOS) / systemd --user unit (Linux) ----
-# This is the "survives reboot" recorder, distinct from the pidfile path above. When it's
-# active it is the authority; `cg up` detects it and only serves the UI (no second recorder).
+# ---- login services: launchd (macOS) / systemd --user (Linux) ----
+# Turnkey = two units: the recorder (always capturing) and the UI (always serving
+# 127.0.0.1). When active they are the authority; `cg up` defers to them. No root,
+# no signing, no Apple approval — a LaunchAgent/user-unit is a per-user capability.
 
-def _launch_agent_path() -> str:
-    return os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents", LABEL + ".plist")
-
-
-def _systemd_unit_name() -> str:
-    return "causegraph-recorder"
-
-
-def _systemd_unit_path() -> str:
-    return os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", _systemd_unit_name() + ".service")
+RECORDER_LABEL = "dev.causegraph.recorder"
+UI_LABEL = "dev.causegraph.ui"
+LABEL = RECORDER_LABEL  # back-compat with `cg service install`
 
 
 def service_supported() -> bool:
     return sys.platform == "darwin" or sys.platform.startswith("linux")
 
 
-def service_active() -> bool:
-    """Is a login-managed recorder loaded/running right now?"""
+def _short(label: str) -> str:
+    return label.rsplit(".", 1)[-1]  # dev.causegraph.recorder -> recorder
+
+
+def _agent_path(label: str) -> str:
+    return os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents", label + ".plist")
+
+
+def _unit_name(label: str) -> str:
+    return "causegraph-" + _short(label)
+
+
+def _systemd_path(label: str) -> str:
+    return os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", _unit_name(label) + ".service")
+
+
+def _svc_log(label: str) -> str:
+    return os.path.join(data_dir(), _short(label) + ".log")
+
+
+def service_active(label: str = RECORDER_LABEL) -> bool:
+    """Is the named login service loaded/running right now?"""
     if sys.platform == "darwin":
-        r = subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{LABEL}"],
-                           capture_output=True)
-        return r.returncode == 0
+        return subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+                              capture_output=True).returncode == 0
     if sys.platform.startswith("linux"):
-        r = subprocess.run(["systemctl", "--user", "is-active", _systemd_unit_name()],
+        r = subprocess.run(["systemctl", "--user", "is-active", _unit_name(label)],
                            capture_output=True, text=True)
         return r.stdout.strip() == "active"
     return False
 
 
-def install_service(db: str) -> str:
-    """Install + load a login service that records into db at every login. Stops any
-    detached (`cg up`) recorder first so only one writer touches the DB. Returns the
-    unit path."""
-    if not service_supported():
-        raise RuntimeError("auto-start on login is supported on macOS and Linux only")
-    cged = find_cged()
-    if not cged:
-        raise FileNotFoundError("cged binary not found — run `make build` first, or set $CAUSEGRAPH_CGED")
-    stop()  # avoid two writers on the same DB
-    args = _recorder_args(cged, db)
-    if sys.platform == "darwin":
-        return _install_launchd(args)
-    return _install_systemd(args)
+def _pythonpath() -> str:
+    """engine (+ vendored deps, in a release archive) — baked into the UI service so
+    it doesn't depend on launchd's minimal environment."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.dirname(os.path.dirname(here))
+    parts = [os.path.join(repo, "engine")]
+    vend = os.path.join(repo, "vendor")
+    if os.path.isdir(vend):
+        parts.append(vend)
+    return os.pathsep.join(parts)
 
 
-def uninstall_service() -> None:
+def _install_unit(label: str, args: list[str], env: dict | None = None) -> str:
     if sys.platform == "darwin":
-        _uninstall_launchd()
+        return _install_launchd(label, args, env)
+    if sys.platform.startswith("linux"):
+        return _install_systemd(label, args, env)
+    raise RuntimeError("login services are supported on macOS and Linux only")
+
+
+def _uninstall_unit(label: str) -> None:
+    if sys.platform == "darwin":
+        _uninstall_launchd(label)
     elif sys.platform.startswith("linux"):
-        _uninstall_systemd()
+        _uninstall_systemd(label)
 
 
-def _install_launchd(args: list[str]) -> str:
-    path = _launch_agent_path()
+def _install_launchd(label: str, args: list[str], env: dict | None = None) -> str:
+    path = _agent_path(label)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    plist = {
+        "Label": label, "ProgramArguments": args,
+        "RunAtLoad": True, "KeepAlive": True,
+        "StandardOutPath": _svc_log(label), "StandardErrorPath": _svc_log(label),
+    }
+    if env:
+        plist["EnvironmentVariables"] = env
     with open(path, "wb") as f:
-        plistlib.dump({
-            "Label": LABEL,
-            "ProgramArguments": args,
-            "RunAtLoad": True,
-            "KeepAlive": True,
-            "StandardOutPath": _logfile(),
-            "StandardErrorPath": _logfile(),
-        }, f)
+        plistlib.dump(plist, f)
     uid = os.getuid()
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{LABEL}"], capture_output=True)
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{label}"], capture_output=True)
     r = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", path], capture_output=True, text=True)
     if r.returncode != 0:  # older macOS: fall back to the legacy verb
         subprocess.run(["launchctl", "load", "-w", path], capture_output=True)
     return path
 
 
-def _uninstall_launchd() -> None:
+def _uninstall_launchd(label: str) -> None:
     uid = os.getuid()
-    path = _launch_agent_path()
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{LABEL}"], capture_output=True)
+    path = _agent_path(label)
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{label}"], capture_output=True)
     if os.path.exists(path):
         subprocess.run(["launchctl", "unload", "-w", path], capture_output=True)
         os.remove(path)
 
 
-def _install_systemd(args: list[str]) -> str:
-    path = _systemd_unit_path()
+def _install_systemd(label: str, args: list[str], env: dict | None = None) -> str:
+    path = _systemd_path(label)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     exec_start = " ".join(shlex.quote(a) for a in args)
+    env_lines = "".join(f"Environment={shlex.quote(f'{k}={v}')}\n" for k, v in (env or {}).items())
     with open(path, "w", encoding="utf-8") as f:
-        f.write(
-            "[Unit]\n"
-            "Description=CauseGraph recorder\n"
-            "After=default.target\n\n"
-            "[Service]\n"
-            f"ExecStart={exec_start}\n"
-            "Restart=always\n\n"
-            "[Install]\n"
-            "WantedBy=default.target\n"
-        )
+        f.write("[Unit]\n"
+                f"Description=CauseGraph ({_short(label)})\n"
+                "After=default.target\n\n"
+                "[Service]\n"
+                f"{env_lines}"
+                f"ExecStart={exec_start}\n"
+                "Restart=always\n\n"
+                "[Install]\n"
+                "WantedBy=default.target\n")
     subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
-    subprocess.run(["systemctl", "--user", "enable", "--now", _systemd_unit_name()], capture_output=True)
+    subprocess.run(["systemctl", "--user", "enable", "--now", _unit_name(label)], capture_output=True)
     return path
 
 
-def _uninstall_systemd() -> None:
-    subprocess.run(["systemctl", "--user", "disable", "--now", _systemd_unit_name()], capture_output=True)
-    path = _systemd_unit_path()
+def _uninstall_systemd(label: str) -> None:
+    subprocess.run(["systemctl", "--user", "disable", "--now", _unit_name(label)], capture_output=True)
+    path = _systemd_path(label)
     if os.path.exists(path):
         os.remove(path)
     subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
+
+
+def _recorder_service_args(db: str) -> list[str]:
+    cged = find_cged()
+    if not cged:
+        raise FileNotFoundError("cged binary not found — run `make build` first, or set $CAUSEGRAPH_CGED")
+    return _recorder_args(cged, db)
+
+
+def _ui_service_args(db: str, host: str, port: int) -> list[str]:
+    # Bake THIS interpreter (the one running `cg setup`, already verified >=3.10 by
+    # scripts/cg) so launchd's minimal PATH can't fall back to macOS's stock 3.9.
+    return [sys.executable, "-m", "causegraph.cli", "ui", "--db", db, "--host", host, "--port", str(port)]
+
+
+def install_service(db: str) -> str:
+    """Recorder-only login service (lower-level; `cg service install`)."""
+    if not service_supported():
+        raise RuntimeError("auto-start on login is supported on macOS and Linux only")
+    stop()  # avoid two writers on the DB
+    return _install_unit(RECORDER_LABEL, _recorder_service_args(db))
+
+
+def uninstall_service() -> None:
+    _uninstall_unit(RECORDER_LABEL)
+
+
+def setup(db: str, host: str = "127.0.0.1", port: int = 8765) -> str:
+    """Turnkey: install BOTH the recorder and the UI as login services so capture
+    and the dashboard are always up. Returns the dashboard URL."""
+    if not service_supported():
+        raise RuntimeError("cg setup is supported on macOS and Linux only")
+    stop()  # stop any detached `cg up` recorder first
+    _install_unit(RECORDER_LABEL, _recorder_service_args(db))
+    _install_unit(UI_LABEL, _ui_service_args(db, host, port), env={"PYTHONPATH": _pythonpath()})
+    return f"http://{host}:{port}"
+
+
+def teardown() -> None:
+    """Remove both login services (kept-on-disk capture is left alone)."""
+    _uninstall_unit(UI_LABEL)
+    _uninstall_unit(RECORDER_LABEL)
+

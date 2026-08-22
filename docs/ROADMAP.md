@@ -28,9 +28,11 @@
 ### The unprivileged path (ship-without-approvals track)
 CauseGraph can be a complete, distributable product using only no-root/no-entitlement capture,
 trading fidelity (not features) vs native EDR-grade backends. Shipped so far: **M1a (adaptive polling)**, **M7 (`cg up` — always-on detached recorder +
-one-command UI)**, **auto-start on login** (`cg service install` — launchd/systemd), and
-**prebuilt downloads** (`install.sh` + `scripts/package.sh` + `.github/workflows/release.yml`:
-Python-only archives, no Go/pip to run). The remaining unprivileged fidelity win is real-time
+one-command UI)**, **turnkey `cg setup`/`teardown`** (recorder **and** UI as launchd/systemd login
+services — bakes the interpreter so launchd can't pick macOS's stock py3.9; `cg service install`
+remains the recorder-only variant), and **prebuilt downloads** (`install.sh` runs `cg setup`
+automatically + `scripts/package.sh` + `.github/workflows/release.yml`: Python-only archives, no
+Go/pip to run; needs Python 3.10+). The remaining unprivileged fidelity win is real-time
 process events via OS notification APIs that don't need root (macOS `kqueue` `EVFILT_PROC`/
 `NOTE_TRACK`, Linux netlink proc connector — *verify the privilege on each platform before
 building*). Native capture (M3-full) stays an optional "pro" backend behind the same `Collector`

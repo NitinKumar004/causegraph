@@ -84,4 +84,25 @@ def test_recorder_args_capture_all(home, tmp_path):
 def test_service_active_false_by_default(home):
     # no login service installed in the test env — must report inactive, never raise
     assert service.service_active() is False
+    assert service.service_active(service.UI_LABEL) is False
     assert service.service_supported() in (True, False)
+
+
+def test_ui_service_args_bake_interpreter(home, tmp_path):
+    # the UI service must bake the current interpreter + run the module (so launchd's
+    # minimal PATH can't fall back to macOS's stock python 3.9, which networkx rejects)
+    import sys
+    args = service._ui_service_args(str(tmp_path / "live.db"), "127.0.0.1", 8765)
+    assert args[0] == sys.executable
+    assert args[1:3] == ["-m", "causegraph.cli"] and "ui" in args
+    assert "--host" in args and "127.0.0.1" in args and "8765" in args
+
+
+def test_pythonpath_includes_engine(home):
+    pp = service._pythonpath()
+    assert any(p.endswith("/engine") for p in pp.split(os.pathsep))
+
+
+def test_unit_naming(home):
+    assert service._unit_name(service.RECORDER_LABEL) == "causegraph-recorder"
+    assert service._unit_name(service.UI_LABEL) == "causegraph-ui"

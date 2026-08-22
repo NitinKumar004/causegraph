@@ -11,17 +11,23 @@ deterministic traversal you can fully test.
 
 Everything runs locally — **no root/admin, nothing leaves your machine.**
 
-## Install — download & run (no build)
+## Install (one line, then it just runs)
 
-The easy path. Needs only **Python 3** (preinstalled on macOS/Linux) — no Go, no compiler.
+Needs only **Python 3.10+** — no Go, no compiler, no build.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/NitinKumar004/causegraph/main/install.sh | sh
-cg up          # starts recording in the background + opens the live UI
 ```
 
-The installer grabs the prebuilt release for your OS/arch (a self-contained bundle: the recorder
-binary + engine + a vendored copy of its one dependency). Jump to [Using it](#using-it--one-command).
+The installer downloads the prebuilt bundle for your OS/arch and **sets it up to run
+automatically** (`cg setup`): a background recorder and the dashboard both start now and on every
+login. When it finishes, just open **http://localhost:8765** — that's it, nothing to run.
+
+- **Stop / remove it:** `cg teardown`
+- **Check it:** `cg status`
+
+Managing it by hand instead? See [manual control](#manual-control) and
+[build from source](#or-build-from-source-developers).
 
 ## Or build from source (developers)
 
@@ -36,32 +42,26 @@ make build     # compiles the daemon to bin/cged and sets up the Python engine
 `make build` creates a self-contained Python environment under `engine/.venv`, so it
 won't touch your system Python. (Optional: `make test` runs the full suite to confirm all is well.)
 
-## Using it — one command
+## What you'll see
+
+Open **http://localhost:8765**: every process on the left (sorted by CPU), the causal graph in the
+middle, details on the right. It **refreshes itself every few seconds** — the header shows `live`
+while recording (and `frozen` if the recorder ever stops). Click any process to trace where it came
+from and what it spawned; the hottest one is picked for you. Everything stays on your machine.
+
+## Manual control
+
+`cg setup` (above) is the hands-off way. If you'd rather run it yourself:
 
 ```bash
-./scripts/cg up          # starts a background recorder + opens the live UI
+cg up        # one-off: background recorder + serve the UI (Ctrl-C stops the UI, not the recorder)
+cg down      # stop the background recorder
+cg status    # recording? how fresh is the data?
+cg service install / uninstall   # just the recorder as a login service (no UI service)
+cg tree <pid> / cg path <pid>    # print the tree as text
 ```
 
-That's the whole thing. `cg up`:
-- starts a **background recorder** that keeps capturing even after you close the terminal
-  (state lives in `~/.causegraph/`),
-- serves the viewer and opens **http://127.0.0.1:8765** in your browser.
-
-You'll see every process on the left (sorted by CPU), the causal graph in the middle, and details
-on the right. It **refreshes itself every few seconds** — the header shows `live` while the
-recorder is running. Click any process to trace where it came from and what it spawned; the
-hottest one is picked for you.
-
-```bash
-./scripts/cg status      # is it recording? how fresh is the data?
-./scripts/cg down        # stop the background recorder
-```
-
-`Ctrl-C` closes the viewer but leaves the recorder running (that's the point — it's a flight
-recorder). Use `cg down` to actually stop capturing.
-
-Prefer the terminal? `./scripts/cg tree <pid>` and `./scripts/cg path <pid>` print the tree as
-text (add `--db ~/.causegraph/live.db`).
+State (the rolling database, logs) lives in `~/.causegraph/`.
 
 ## Where things stand
 

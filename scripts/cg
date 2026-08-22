@@ -1,15 +1,28 @@
 #!/usr/bin/env bash
 # cg — CauseGraph CLI wrapper. Works two ways:
 #   - in the repo: uses the engine venv (engine/.venv) built by `make build`.
-#   - from a release archive: uses system python3 + the bundled vendor/ deps
-#     (networkx is pure-python and shipped in the archive — no pip, no internet).
+#   - from a release archive: uses a system python3 (>=3.10) + the bundled vendor/
+#     deps (networkx is pure-python and shipped in the archive — no pip, no internet).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-PY="$ROOT/engine/.venv/bin/python"
-if [ ! -x "$PY" ]; then PY="$(command -v python3 || true)"; fi
+# Pick a Python >= 3.10 (networkx needs it). macOS ships /usr/bin/python3 = 3.9, so
+# we probe versioned interpreters too and take the first that qualifies.
+pick_py() {
+  for c in "${CAUSEGRAPH_PYTHON:-}" "$ROOT/engine/.venv/bin/python" \
+           python3.13 python3.12 python3.11 python3.10 python3; do
+    [ -n "$c" ] || continue
+    p="$(command -v "$c" 2>/dev/null || true)"
+    [ -n "$p" ] || { [ -x "$c" ] && p="$c" || continue; }
+    if "$p" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
+      printf '%s\n' "$p"; return 0
+    fi
+  done
+  return 1
+}
+PY="$(pick_py || true)"
 if [ -z "$PY" ]; then
-  echo "cg: python3 not found — install Python 3.10+ and re-run" >&2
+  echo "cg: needs Python 3.10+ (none found). Install it (e.g. 'brew install python3') and retry." >&2
   exit 1
 fi
 
