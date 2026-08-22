@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
-# cg — CauseGraph CLI wrapper. Uses the engine venv if present, else system python.
+# cg — CauseGraph CLI wrapper. Works two ways:
+#   - in the repo: uses the engine venv (engine/.venv) built by `make build`.
+#   - from a release archive: uses system python3 + the bundled vendor/ deps
+#     (networkx is pure-python and shipped in the archive — no pip, no internet).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 PY="$ROOT/engine/.venv/bin/python"
-if [ ! -x "$PY" ]; then PY="$(command -v python3)"; fi
-exec env PYTHONPATH="$ROOT/engine" "$PY" -m causegraph.cli "$@"
+if [ ! -x "$PY" ]; then PY="$(command -v python3 || true)"; fi
+if [ -z "$PY" ]; then
+  echo "cg: python3 not found — install Python 3.10+ and re-run" >&2
+  exit 1
+fi
+
+PYPATH="$ROOT/engine"
+[ -d "$ROOT/vendor" ] && PYPATH="$PYPATH:$ROOT/vendor"   # bundled deps in a release archive
+
+exec env PYTHONPATH="$PYPATH" "$PY" -m causegraph.cli "$@"

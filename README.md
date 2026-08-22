@@ -9,17 +9,23 @@ graph from those events and lets you navigate it — pick a process (or the hott
 its causal neighborhood. **No LLM: the graph is the answer**, and the reasoning stays in
 deterministic traversal you can fully test.
 
-## What you need first
+Everything runs locally — **no root/admin, nothing leaves your machine.**
 
-- **Go 1.26+** — to build the capture daemon. ([install](https://go.dev/dl/))
-- **Python 3.10+** — runs the graph engine and the web viewer. (macOS/Linux ship with it.)
-- **macOS, Linux, or Windows.** Capture uses `gopsutil`, so **no root/admin needed**. Everything
-  runs locally — nothing is ever sent off your machine.
+## Install — download & run (no build)
 
-> Heads-up: this is a developer tool you build from source, not a click-to-install app. The steps
-> below take about a minute.
+The easy path. Needs only **Python 3** (preinstalled on macOS/Linux) — no Go, no compiler.
 
-## Setup (one time)
+```bash
+curl -fsSL https://raw.githubusercontent.com/NitinKumar004/causegraph/main/install.sh | sh
+cg up          # starts recording in the background + opens the live UI
+```
+
+The installer grabs the prebuilt release for your OS/arch (a self-contained bundle: the recorder
+binary + engine + a vendored copy of its one dependency). Jump to [Using it](#using-it--one-command).
+
+## Or build from source (developers)
+
+- **Go 1.26+** ([install](https://go.dev/dl/)) + **Python 3.10+**.
 
 ```bash
 git clone https://github.com/NitinKumar004/causegraph.git
@@ -27,7 +33,7 @@ cd causegraph
 make build     # compiles the daemon to bin/cged and sets up the Python engine
 ```
 
-That's it. `make build` creates a self-contained Python environment under `engine/.venv`, so it
+`make build` creates a self-contained Python environment under `engine/.venv`, so it
 won't touch your system Python. (Optional: `make test` runs the full suite to confirm all is well.)
 
 ## Using it — one command

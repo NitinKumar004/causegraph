@@ -2,8 +2,9 @@
 ROOT    := $(shell pwd)
 PY      := $(ROOT)/engine/.venv/bin/python
 PYTEST  := $(ROOT)/engine/.venv/bin/pytest
+VERSION ?= dev
 
-.PHONY: all gen check-gen venv build build-go test test-go test-py fixtures clean
+.PHONY: all gen check-gen venv build build-go test test-go test-py fixtures dist clean
 
 all: build
 
@@ -56,5 +57,9 @@ fixtures: build
 	./scripts/cg load test/fixtures/filewatch_events.jsonl --db test/fixtures/fw.db
 	@echo "wrote test/fixtures/graph.db + fw.db"
 
+## dist: build self-contained release archives (no Go/pip to RUN) into dist/
+dist: build
+	./scripts/package.sh $(VERSION)
+
 clean:
-	rm -rf bin *.db *.db-wal *.db-shm test/fixtures/graph.db
+	rm -rf bin dist *.db *.db-wal *.db-shm test/fixtures/graph.db

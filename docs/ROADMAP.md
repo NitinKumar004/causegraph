@@ -27,13 +27,17 @@
 
 ### The unprivileged path (ship-without-approvals track)
 CauseGraph can be a complete, distributable product using only no-root/no-entitlement capture,
-trading fidelity (not features) vs native EDR-grade backends. Shipped so far: **M1a (adaptive
-polling)** and **M7 (`cg up` — always-on detached recorder + one-command UI)**. Next unprivileged
-wins: real-time process events via OS notification APIs that don't need root (macOS `kqueue`
-`EVFILT_PROC`/`NOTE_TRACK`, Linux netlink proc connector — *verify the privilege on each platform
-before building*), then **auto-start on login** (launchd LaunchAgent / systemd --user unit) so the
-recorder survives reboot, and **prebuilt binaries** so non-developers skip `make build`. Native
-capture (M3-full) stays an optional "pro" backend behind the same `Collector` seam.
+trading fidelity (not features) vs native EDR-grade backends. Shipped so far: **M1a (adaptive polling)**, **M7 (`cg up` — always-on detached recorder +
+one-command UI)**, **auto-start on login** (`cg service install` — launchd/systemd), and
+**prebuilt downloads** (`install.sh` + `scripts/package.sh` + `.github/workflows/release.yml`:
+Python-only archives, no Go/pip to run). The remaining unprivileged fidelity win is real-time
+process events via OS notification APIs that don't need root (macOS `kqueue` `EVFILT_PROC`/
+`NOTE_TRACK`, Linux netlink proc connector — *verify the privilege on each platform before
+building*). Native capture (M3-full) stays an optional "pro" backend behind the same `Collector`
+seam.
+
+To cut a release: `git tag v0.1.0 && git push origin v0.1.0` → the workflow builds+publishes the
+per-platform archives that `install.sh` downloads.
 
 ### Smaller enhancements
 - **`actor.cwd` capture** — so `file_watch` matches *relative*-path args (today: `exe` + absolute args only).
