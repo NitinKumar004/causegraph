@@ -18,6 +18,16 @@ function cpuColor(c) { return isHot(c) ? "#ff7b72" : "#8a93a6"; }
 function barFor(c) { return isHot(c) ? "linear-gradient(90deg,#f87171,#fb923c)" : "rgba(154,163,178,.45)"; }
 function humanBytes(n) { if (n == null) return "—"; let v = n, i = 0; const u = ["B", "KiB", "MiB", "GiB", "TiB"]; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`; }
 function mib(n) { return n == null ? 0 : n / (1024 * 1024); }
+// "current" = latest sample, falling back to peak when a process was only seen at baseline
+function curCpu(n) { return n.cpu_pct != null ? n.cpu_pct : (n.peak_cpu_pct || 0); }
+function curMem(n) { return n.rss_bytes != null ? n.rss_bytes : n.peak_rss_bytes; }
+// group by application: the first "…/<Name>.app/…" bundle (folds all Chrome helpers into
+// "Google Chrome"); else the binary's basename.
+function appOf(exe) { const m = (exe || "").match(/\/([^/]+)\.app\//); return m ? m[1] : base(exe); }
+// "alive now" = sampled within a few polls of the newest event; filters out the hours of
+// exited processes the capture also holds, so roll-ups/summary reflect NOW, not history.
+const ALIVE_GRACE_NS = 8e9;
+function alive(n) { return lastTs == null || (n.last_seen_ts != null && n.last_seen_ts >= lastTs - ALIVE_GRACE_NS); }
 function fmtTime(ns) { if (!ns) return "—"; const d = new Date(ns / 1e6); return d.toTimeString().slice(0, 8); }
 
 // ---- state ----
@@ -25,6 +35,7 @@ let allProcs = [];       // every process node (for the list), from ?all=1
 let graphData = null;    // current graph subset
 let selectedId = null;
 let sortMode = "cpu";
+let groupMode = "app";   // "app" (roll-ups) or "proc" (flat per-PID list)
 let filterCpu = 0, filterMem = 0, filterText = "";
 const nodeById = {};     // id -> node meta from the current graph
 let currentPid = null;   // the pid whose family the graph currently shows (for live refresh)
@@ -55,19 +66,19 @@ function nodeCardHTML(n) {
     return `<div class="r1"><span class="badge">${esc(abbrev(nm))}</span>
       <div style="flex:1;min-width:0"><div class="nm">${esc(nm)}</div><div class="sub">file</div></div></div>`;
   }
-  const cpu = n.peak_cpu_pct;
+  const cpu = curCpu(n);
   return `<div class="r1"><span class="badge">${esc(abbrev(nm))}</span>
       <span class="nm">${esc(nm)}</span><span class="sdot"></span>
-      <span class="pc" style="color:${cpuColor(cpu)}">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</span></div>
+      <span class="pc" style="color:${cpuColor(cpu)}">${cpu.toFixed(1)}%</span></div>
       <div class="pid">pid ${n.pid}</div>
-      <div class="bar"><i style="width:${Math.max(3, Math.min(100, cpu || 0))}%;background:${barFor(cpu)}"></i></div>`;
+      <div class="bar"><i style="width:${Math.max(3, Math.min(100, cpu))}%;background:${barFor(cpu)}"></i></div>`;
 }
 function buildCards() {
   layer.innerHTML = ""; cards = {};
   cy.nodes().forEach((cyn) => {
     const n = cyn.data("meta");
     const div = document.createElement("div");
-    div.className = "gnode" + (n.kind === "file" ? " file" : "") + (n.kind === "process" && isHot(n.peak_cpu_pct) ? " hot" : "");
+    div.className = "gnode" + (n.kind === "file" ? " file" : "") + (n.kind === "process" && isHot(curCpu(n)) ? " hot" : "");
     div.innerHTML = nodeCardHTML(n);
     div.addEventListener("click", (e) => { e.stopPropagation(); selectNode(n.id); });
     div.addEventListener("mouseenter", () => hoverNode(cyn));
@@ -134,8 +145,8 @@ cy.on("tap", (e) => { if (e.target === cy) { /* keep selection */ } });
 // A process passes the CPU/MEM/name filter — the one predicate both the list and
 // the graph obey, so sliding a filter dims the same nodes in both places.
 function matchesFilter(n) {
-  if ((n.peak_cpu_pct || 0) < filterCpu || mib(n.peak_rss_bytes) < filterMem) return false;
-  if (filterText) { const t = filterText.toLowerCase(); return base(n.exe).toLowerCase().includes(t) || String(n.pid).includes(t); }
+  if (curCpu(n) < filterCpu || mib(curMem(n)) < filterMem) return false;
+  if (filterText) { const t = filterText.toLowerCase(); return base(n.exe).toLowerCase().includes(t) || appOf(n.exe).toLowerCase().includes(t) || String(n.pid).includes(t); }
   return true;
 }
 // Dim graph nodes below the filter instead of removing them, so the tree keeps its
@@ -149,20 +160,66 @@ function applyGraphFilter() {
 }
 
 // ================= process list (left) =================
+const bySort = (getCpu, getMem, getName) => (a, b) =>
+  sortMode === "az" ? getName(a).localeCompare(getName(b))
+  : sortMode === "mem" ? (getMem(b) || 0) - (getMem(a) || 0)
+  : (getCpu(b) || 0) - (getCpu(a) || 0);
+
+function renderStatus() {
+  const el = $("mstatus"); if (!el) return;
+  const groups = {};
+  for (const n of allProcs.filter(alive)) { const k = appOf(n.exe); (groups[k] = groups[k] || { cpu: 0 }).cpu += curCpu(n); }
+  const top = Object.entries(groups).sort((a, b) => b[1].cpu - a[1].cpu).filter(([, g]) => g.cpu >= 5).slice(0, 2);
+  if (!top.length) { el.innerHTML = `<span class="dotq"></span>Quiet — nothing's working hard right now.`; el.className = "mstatus quiet"; return; }
+  const parts = top.map(([app, g]) => `<b>${esc(app)}</b> (${g.cpu.toFixed(0)}%)`);
+  const who = parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts[0];
+  const busy = top[0][1].cpu >= 100;
+  el.className = "mstatus" + (busy ? " busy" : "");
+  el.innerHTML = `<span class="dotq"></span>${busy ? "Busy" : "Active"} — ${who} ${parts.length === 2 ? "are" : "is"} working hardest.`;
+}
+
 function renderList() {
-  let rows = allProcs.filter(matchesFilter);
-  const total = allProcs.length;
-  rows.sort((a, b) => sortMode === "az" ? base(a.exe).localeCompare(base(b.exe)) : sortMode === "mem" ? (b.peak_rss_bytes || 0) - (a.peak_rss_bytes || 0) : (b.peak_cpu_pct || 0) - (a.peak_cpu_pct || 0));
-  $("pcount").textContent = `${rows.length} of ${total}`;
+  renderStatus();
+  const live = allProcs.filter(alive);
+  const rows = live.filter(matchesFilter);
+  $("pcount").textContent = groupMode === "app"
+    ? `${new Set(rows.map((n) => appOf(n.exe))).size} apps`
+    : `${rows.length} of ${live.length}`;
   const el = $("plist"); el.innerHTML = "";
+  if (groupMode === "app") renderAppRows(el, rows); else renderProcRows(el, rows);
+}
+
+function renderProcRows(el, rows) {
+  rows.sort(bySort(curCpu, curMem, (n) => base(n.exe)));
   for (const n of rows) {
-    const nm = base(n.exe), cpu = n.peak_cpu_pct;
+    const nm = base(n.exe), cpu = curCpu(n);
     const div = document.createElement("div");
     div.className = "prow" + (n.id === selectedId ? " sel" : "");
     div.innerHTML = `<span class="badge">${esc(abbrev(nm))}</span>
       <div class="info"><div class="nm">${esc(nm)}</div><div class="pid">${n.pid}</div></div>
-      <div class="met"><div class="cpu" style="color:${cpuColor(cpu)}">${cpu == null ? "—" : cpu.toFixed(1) + "%"}</div><div class="mem">${humanBytes(n.peak_rss_bytes)}</div></div>`;
+      <div class="met"><div class="cpu" style="color:${cpuColor(cpu)}">${cpu.toFixed(1)}%</div><div class="mem">${humanBytes(curMem(n))}</div></div>`;
     div.addEventListener("click", () => focusPid(n.pid));
+    el.appendChild(div);
+  }
+}
+
+function renderAppRows(el, rows) {
+  const groups = {};  // app -> {cpu, mem, procs[]}
+  for (const n of rows) {
+    const k = appOf(n.exe);
+    const g = groups[k] || (groups[k] = { app: k, cpu: 0, mem: 0, procs: [] });
+    g.cpu += curCpu(n); g.mem += curMem(n) || 0; g.procs.push(n);
+  }
+  const list = Object.values(groups).sort(bySort((g) => g.cpu, (g) => g.mem, (g) => g.app));
+  for (const g of list) {
+    const hottest = g.procs.slice().sort((a, b) => curCpu(b) - curCpu(a))[0];
+    const sel = g.procs.some((n) => n.id === selectedId);
+    const div = document.createElement("div");
+    div.className = "prow" + (sel ? " sel" : "");
+    div.innerHTML = `<span class="badge">${esc(abbrev(g.app))}</span>
+      <div class="info"><div class="nm">${esc(g.app)}</div><div class="pid">${g.procs.length} process${g.procs.length === 1 ? "" : "es"}</div></div>
+      <div class="met"><div class="cpu" style="color:${cpuColor(g.cpu)}">${g.cpu.toFixed(1)}%</div><div class="mem">${humanBytes(g.mem)}</div></div>`;
+    div.addEventListener("click", () => focusPid(hottest.pid));
     el.appendChild(div);
   }
 }
@@ -346,7 +403,7 @@ async function loadAll() {
     // default view: the hottest process that has a real tree (ancestry / children /
     // file cause), so we land on something meaningful rather than a lone node.
     overlay("loading");
-    const cands = allProcs.slice().sort((a, b) => (b.peak_cpu_pct || 0) - (a.peak_cpu_pct || 0)).slice(0, 8);
+    const cands = allProcs.filter(alive).sort((a, b) => curCpu(b) - curCpu(a)).slice(0, 8);
     for (const c of cands) {
       try {
         const r = await fetch(`/api/graph?pid=${c.pid}&family=1&min_confidence=0.5`);
@@ -363,11 +420,12 @@ async function loadAll() {
 $("f").addEventListener("submit", (e) => {
   e.preventDefault(); const v = $("query").value.trim(); if (!v) return;
   if (/^\d+$/.test(v)) { focusPid(parseInt(v, 10)); return; }
-  const top = allProcs.filter(matchesFilter).sort((a, b) => (b.peak_cpu_pct || 0) - (a.peak_cpu_pct || 0))[0];
+  const top = allProcs.filter(alive).filter(matchesFilter).sort((a, b) => curCpu(b) - curCpu(a))[0];
   if (top) focusPid(top.pid);
 });
 $("query").addEventListener("input", (e) => { filterText = e.target.value.trim(); renderList(); applyGraphFilter(); });
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; sortMode = b.dataset.sort; [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b)); renderList(); });
+$("gtabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; groupMode = b.dataset.group; [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b)); renderList(); });
 $("cpuMin").addEventListener("input", (e) => { filterCpu = +e.target.value; $("cpuLbl").textContent = `${filterCpu}%`; renderList(); applyGraphFilter(); });
 $("memMin").addEventListener("input", (e) => { filterMem = +e.target.value; $("memLbl").textContent = `${filterMem} MiB`; renderList(); applyGraphFilter(); });
 $("reset").addEventListener("click", () => { filterCpu = 0; filterMem = 0; filterText = ""; $("cpuMin").value = 0; $("memMin").value = 0; $("query").value = ""; $("cpuLbl").textContent = "0%"; $("memLbl").textContent = "0 MiB"; renderList(); applyGraphFilter(); });
@@ -421,7 +479,7 @@ function applyGraphUpdate(d) {
     nodeById[n.id] = n;
     const card = cards[n.id]; if (!card) continue;
     card.innerHTML = nodeCardHTML(n);
-    card.classList.toggle("hot", n.kind === "process" && isHot(n.peak_cpu_pct));
+    card.classList.toggle("hot", n.kind === "process" && isHot(curCpu(n)));
   }
   applyGraphFilter();
   $("status").textContent = `observing · ${d.nodes.length} nodes · ${d.edges.length} edges` + (d.truncated ? " · truncated" : "");

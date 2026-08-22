@@ -54,6 +54,8 @@ def _node_json(g, key) -> dict:
             "args": list(n.get("args") or []),  # full command line, for the detail view
             "observed_spawn": n["observed_spawn"], "spawn_ts": n["spawn_ts"],
             "peak_cpu_pct": n["peak_cpu_pct"], "peak_rss_bytes": n["peak_rss_bytes"],
+            "cpu_pct": n.get("latest_cpu_pct"), "rss_bytes": n.get("latest_rss_bytes"),  # "current"
+            "last_seen_ts": n.get("last_seen_ts"),  # for the UI's alive/exited check
         }
     return {"id": _node_id(key), "kind": "file",
             "label": os.path.basename(n["path"]) or n["path"], "path": n["path"]}

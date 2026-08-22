@@ -69,6 +69,18 @@
       display: flex; flex-direction: column; min-height: 0; }
     .panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 18px 12px; }
     .panel-head .count { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    /* machine-status one-liner */
+    .mstatus { display: block; margin: 0 14px 12px; padding: 10px 12px;
+      border-radius: 10px; font-size: 12.5px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); line-height: 1.5; }
+    .mstatus b { font-weight: 650; }
+    .mstatus .dotq { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: middle;
+      background: var(--acc); box-shadow: 0 0 6px rgba(125,211,252,.7); }
+    .mstatus.quiet { color: var(--text-2); } .mstatus.quiet .dotq { background: var(--muted); box-shadow: none; }
+    .mstatus.busy .dotq { background: var(--hot); box-shadow: 0 0 6px rgba(255,123,114,.8); }
+    /* Apps | Processes grouping toggle */
+    .gtabs { display: flex; gap: 3px; padding: 3px; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 8px; }
+    .gtabs button { flex: 1; height: 26px; border: none; background: none; color: var(--text-2); font: inherit; font-weight: 600; font-size: 11.5px; border-radius: 7px; cursor: pointer; }
+    .gtabs button.on { background: rgba(125,211,252,.14); color: var(--acc-2); }
 
     /* filter card */
     .filters { margin: 0 14px 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
@@ -314,7 +326,11 @@
     <!-- LEFT -->
     <aside class="left">
       <div class="panel-head"><span class="kick">Processes</span><span class="count" id="pcount"></span></div>
+      <div id="mstatus" class="mstatus quiet"><span class="dotq"></span>Reading your machine…</div>
       <div class="filters">
+        <div class="gtabs" id="gtabs">
+          <button data-group="app" class="on">Apps</button><button data-group="proc">Processes</button>
+        </div>
         <div class="tabs" id="tabs">
           <button data-sort="cpu" class="on">CPU</button><button data-sort="mem">MEM</button><button data-sort="az">A–Z</button>
         </div>
