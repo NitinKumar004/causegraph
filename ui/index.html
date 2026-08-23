@@ -207,6 +207,31 @@
     .legend .ln { width: 18px; border-top: 1.5px solid rgba(148,163,184,.6); } .legend .ln.dash { border-top: 1.5px dashed rgba(154,163,178,.6); }
     .expandlink { color: var(--acc-2); cursor: pointer; } .expandlink:hover { text-decoration: underline; }
 
+    /* ===================== timeline rewind ===================== */
+    #timeline { height: 46px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 18px;
+      border-top: 1px solid var(--line); background: var(--panel); }
+    #timeline.hidden { display: none; }
+    .tl-live { display: none; align-items: center; gap: 5px; font: 600 12px inherit; font-family: inherit; color: var(--acc-2);
+      border: 1px solid rgba(125,211,252,.4); background: rgba(125,211,252,.1); border-radius: 8px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
+    .tl-live:hover { background: rgba(125,211,252,.2); }
+    #timeline.rewound .tl-live { display: inline-flex; }
+    .tl-start, .tl-end { font: 500 11px ui-monospace, monospace; color: var(--muted); white-space: nowrap; min-width: 60px; }
+    .tl-end { text-align: right; }
+    .tl-track { position: relative; flex: 1; height: 6px; border-radius: 4px; background: rgba(148,163,184,.14); cursor: pointer; }
+    .tl-track.loading { background: rgba(125,211,252,.16); animation: tlpulse 1s ease-in-out infinite; }
+    @keyframes tlpulse { 50% { background: rgba(125,211,252,.28); } }
+    .tl-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 4px; background: rgba(125,211,252,.32); pointer-events: none; }
+    #timeline.rewound .tl-fill { background: rgba(224,176,98,.42); }
+    .tl-handle { position: absolute; top: 50%; left: 100%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+      background: var(--acc); border: 2px solid var(--panel); transform: translateY(-50%); box-shadow: 0 1px 5px rgba(0,0,0,.45); cursor: grab; }
+    #timeline.rewound .tl-handle { background: #e0b062; }
+    .tl-handle:active { cursor: grabbing; }
+    .tl-bubble { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+      font: 600 11px ui-monospace, monospace; color: var(--text); background: var(--card-2); border: 1px solid var(--line-2);
+      border-radius: 6px; padding: 3px 8px; opacity: 0; transition: opacity .12s; pointer-events: none; }
+    .tl-track.drag .tl-bubble, #timeline.rewound .tl-bubble { opacity: 1; }
+    @media (max-width: 660px) { .tl-start, .tl-end { display: none; } }
+
     /* overlays */
     .overlay { position: absolute; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 24px; pointer-events: none; }
     .overlay.show { display: flex; }
@@ -400,6 +425,19 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
     </button>
   </main>
+
+  <!-- timeline rewind: drag to view the machine at any past moment -->
+  <div id="timeline" class="hidden">
+    <button id="tlLive" class="tl-live" title="Return to now and resume live updates">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Live
+    </button>
+    <span class="tl-start" id="tl-start">—</span>
+    <div class="tl-track" id="tl-track">
+      <div class="tl-fill" id="tl-fill"></div>
+      <div class="tl-handle" id="tl-handle"><span class="tl-bubble" id="tl-bubble"></span></div>
+    </div>
+    <span class="tl-end" id="tl-end">now</span>
+  </div>
 
   <div id="snack"></div>
   <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>

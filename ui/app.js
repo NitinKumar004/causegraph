@@ -4,6 +4,8 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])));
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "?";
+// Append the timeline position (as_of, ns) to any API URL when rewound; no-op when live.
+const asq = (url) => (asOf == null ? url : url + (url.includes("?") ? "&" : "?") + "as_of=" + asOf);
 
 // ---- visual helpers ----
 // Monochrome by design: tiles are neutral slate (no per-process hue), red is
@@ -27,7 +29,9 @@ function appOf(exe) { const m = (exe || "").match(/\/([^/]+)\.app\//); return m 
 // "alive now" = sampled within a few polls of the newest event; filters out the hours of
 // exited processes the capture also holds, so roll-ups/summary reflect NOW, not history.
 const ALIVE_GRACE_NS = 8e9;
-function alive(n) { return lastTs == null || (n.last_seen_ts != null && n.last_seen_ts >= lastTs - ALIVE_GRACE_NS); }
+// "now" is the newest event when live, or the timeline position when rewound.
+function nowTs() { return asOf != null ? asOf : lastTs; }
+function alive(n) { const t = nowTs(); return t == null || (n.last_seen_ts != null && n.last_seen_ts >= t - ALIVE_GRACE_NS); }
 function fmtTime(ns) { if (!ns) return "—"; const d = new Date(ns / 1e6); return d.toTimeString().slice(0, 8); }
 
 // ---- state ----
@@ -41,6 +45,7 @@ const nodeById = {};     // id -> node meta from the current graph
 let currentPid = null;   // the pid whose family the graph currently shows (for live refresh)
 let expanded = false;    // whether the current family view is the widened ("show more") one
 let asOf = null;         // timeline: view the machine as of this ts (ns); null = live/now
+let tlMin = null, tlMax = null;  // capture window (ns) the timeline scrubber spans
 // auto-refresh: re-poll the DB on a timer, paused while the user is interacting so
 // the view never yanks. autoMs = 0 means off. Cycled via the header "live" button.
 const AUTO_STEPS = [4000, 8000, 15000, 0];  // 4s -> 8s -> 15s -> off -> (loops)
@@ -151,7 +156,7 @@ async function expandCurrent() {
   if (currentPid == null) return;
   expanded = true;
   try {
-    const r = await fetch(`/api/graph?pid=${currentPid}&family=1&expand=1&min_confidence=${$("minc").value}`);
+    const r = await fetch(asq(`/api/graph?pid=${currentPid}&family=1&expand=1&min_confidence=${$("minc").value}`));
     const d = await r.json();
     if (r.ok && !d.error) { renderGraph(d); selectNode(selectedId && nodeById[selectedId] ? selectedId : d.culprit); }
   } catch (_) { /* keep current view */ }
@@ -289,7 +294,7 @@ async function selectNode(id) {
   $("s-body").innerHTML = inspectorBody(n, null);  // instant; the trend graphs fill in on fetch
   wireInspector(n);
   try {
-    const d = await (await fetch(`/api/proc?pid=${n.pid}`)).json();
+    const d = await (await fetch(asq(`/api/proc?pid=${n.pid}`))).json();
     if (!d.error && selectedId === id) { $("s-body").innerHTML = inspectorBody(n, d); wireInspector(n); }
   } catch (_) { /* keep the instant view */ }
 }
@@ -388,7 +393,7 @@ async function openInspect(n) {
   $("sheet").innerHTML = inspectHTML(n, null);   // instant render; resources fill in
   $("sheet").querySelector(".x").onclick = closeInspect;
   try {
-    const d = await (await fetch(`/api/proc?pid=${n.pid}`)).json();
+    const d = await (await fetch(asq(`/api/proc?pid=${n.pid}`))).json();
     if (!d.error && $("modal").classList.contains("show")) {
       $("sheet").innerHTML = inspectHTML(n, d);
       $("sheet").querySelector(".x").onclick = closeInspect;
@@ -403,7 +408,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeIns
 let incidentList = [];
 async function fetchIncidents() {
   try {
-    const d = await (await fetch(`/api/incidents${asOf != null ? `?as_of=${asOf}` : ""}`)).json();
+    const d = await (await fetch(asq("/api/incidents"))).json();
     if (d.incidents) { incidentList = d.incidents; $("incCount").textContent = d.total; $("incBtn").classList.toggle("has", d.total > 0); }
   } catch (_) {}
 }
@@ -429,6 +434,73 @@ function openIncidents() {
 function closeIncidents() { $("incidents-modal").classList.remove("show"); }
 $("incBtn").addEventListener("click", openIncidents);
 $("incidents-modal").addEventListener("click", (e) => { if (e.target === $("incidents-modal")) closeIncidents(); });
+
+// ---- timeline rewind ----
+// Format an ns timestamp as a wall clock (HH:MM:SS) for labels.
+function fmtClock(ns) { return ns == null ? "—" : new Date(ns / 1e6).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+function tlFrac() {  // where the handle sits: current view position within the window
+  if (tlMin == null || tlMax == null || tlMax <= tlMin) return 1;
+  const t = asOf == null ? tlMax : asOf;
+  return Math.min(1, Math.max(0, (t - tlMin) / (tlMax - tlMin)));
+}
+function tlPaint(frac) {  // move the handle + fill + bubble; pure visual, no query
+  const pct = (frac * 100).toFixed(3) + "%";
+  $("tl-handle").style.left = pct; $("tl-fill").style.width = pct;
+  const ts = tlMin + frac * (tlMax - tlMin);
+  $("tl-bubble").textContent = frac >= LIVE_EDGE ? "now" : fmtClock(ts);
+}
+function fetchWindow() {
+  return fetch("/api/window").then((r) => r.json()).then((w) => {
+    if (w.min_ts == null || w.max_ts == null || w.max_ts <= w.min_ts) { $("timeline").classList.add("hidden"); return; }
+    tlMin = w.min_ts; tlMax = Math.max(w.max_ts, lastTs || 0);
+    $("timeline").classList.remove("hidden");
+    $("tl-start").textContent = fmtClock(tlMin);
+    if (asOf == null) { $("tl-end").textContent = "now"; tlPaint(1); }
+  }).catch(() => {});
+}
+const LIVE_EDGE = 0.995;   // dragging past here == snap to live (asOf = null)
+let tlDebounce = 0;
+function commitAsOf(frac) {  // debounced: run the actual re-query at the settled position
+  clearTimeout(tlDebounce);
+  tlDebounce = setTimeout(async () => {
+    if (frac >= LIVE_EDGE) { snapLive(); return; }
+    asOf = Math.round(tlMin + frac * (tlMax - tlMin));
+    updateLiveLabel();
+    $("tl-track").classList.add("loading");
+    try { await refreshData(); } finally { $("tl-track").classList.remove("loading"); }
+  }, 200);
+}
+function snapLive() {  // return to now: clear as_of, resume the live poll
+  asOf = null; clearTimeout(tlDebounce);
+  $("timeline").classList.remove("rewound"); $("tl-track").classList.remove("loading");
+  $("tl-end").textContent = "now"; tlPaint(1);
+  updateLiveLabel();
+  refreshData();  // one immediate live read so the view snaps forward without waiting for the tick
+}
+(function wireTimeline() {
+  const track = $("tl-track");
+  let dragging = false;
+  const fracFromX = (clientX) => {
+    const r = track.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  };
+  const onMove = (clientX) => {
+    const f = fracFromX(clientX);
+    tlPaint(f);
+    $("timeline").classList.toggle("rewound", f < LIVE_EDGE);
+    commitAsOf(f);  // debounced — the query only fires 200ms after the handle settles
+  };
+  track.addEventListener("pointerdown", (e) => {
+    if (tlMin == null) return;
+    dragging = true; track.classList.add("drag"); track.setPointerCapture(e.pointerId);
+    onMove(e.clientX); e.preventDefault();
+  });
+  track.addEventListener("pointermove", (e) => { if (dragging) onMove(e.clientX); });
+  const end = (e) => { if (!dragging) return; dragging = false; track.classList.remove("drag"); try { track.releasePointerCapture(e.pointerId); } catch (_) {} };
+  track.addEventListener("pointerup", end);
+  track.addEventListener("pointercancel", end);
+  $("tlLive").addEventListener("click", snapLive);
+})();
 function showFile(n) {
   $("s-name").textContent = base(n.path); $("s-path").className = "sel-path"; $("s-path").textContent = n.path || "";
   const conf = (graphData.edges.find((e) => e.rule === "file_watch" && e.source === n.id) || {}).conf;
@@ -442,7 +514,7 @@ async function focusPid(pid) {
   currentPid = pid;  // remember what the graph shows, so live refresh re-polls it
   expanded = false;  // a new focus starts from the compact view
   try {
-    const r = await fetch(`/api/graph?pid=${pid}&family=1&min_confidence=${$("minc").value}`);
+    const r = await fetch(asq(`/api/graph?pid=${pid}&family=1&min_confidence=${$("minc").value}`));
     const d = await r.json();
     if (!r.ok || d.error) { setError(d.error || `error ${r.status}`); return; }
     renderGraph(d);
@@ -495,7 +567,7 @@ async function loadAll() {
   try { const m = await (await fetch("/api/meta")).json(); if (m.db) { $("dbname").textContent = m.db; $("art-db").textContent = m.db; } if (m.latest_ts != null) lastTs = m.latest_ts; } catch (_) {}
   let d;
   try {
-    const r = await fetch("/api/graph?all=1&max_nodes=20000");  // the list wants every process, not the graph cap
+    const r = await fetch(asq("/api/graph?all=1&max_nodes=20000"));  // the list wants every process, not the graph cap
     d = await r.json();
     if (!r.ok || d.error) throw new Error(d && d.error);
   } catch (e) {
@@ -506,6 +578,7 @@ async function loadAll() {
   $("art-sub").textContent = `sqlite · ${allProcs.length} processes`;
   renderList();
   fetchIncidents();  // lazy, non-blocking — fills the header badge after first paint
+  fetchWindow();     // populate the timeline scrubber range
   const live = allProcs.filter(alive);
   if (!allProcs.length) { emptyState("Nothing captured yet", "The recorder hasn't written any events. Start it with <code>cg up</code> — then this fills in within a few seconds."); return; }
   if (!live.length) { emptyState("Recorder looks stopped", "The capture has history but nothing was sampled recently — the recorder isn't writing. Restart it with <code>cg up</code>."); return; }
@@ -513,7 +586,7 @@ async function loadAll() {
   const cands = live.sort((a, b) => curCpu(b) - curCpu(a)).slice(0, 6);
   for (const c of cands) {
     try {
-      const r = await fetch(`/api/graph?pid=${c.pid}&family=1&min_confidence=0.5`);
+      const r = await fetch(asq(`/api/graph?pid=${c.pid}&family=1&min_confidence=0.5`));
       const g = await r.json();
       if (r.ok && !g.error && g.nodes.length > 1) { currentPid = c.pid; renderGraph(g); const hit = g.nodes.find((x) => x.pid === c.pid && x.kind === "process"); selectNode(hit ? hit.id : g.culprit); return; }
     } catch (_) {}
@@ -580,6 +653,7 @@ window.addEventListener("pointerup", () => { panActive = false; });
 // Never refresh mid-interaction, so the view can't jump under the user's hands.
 function busy() {
   return refreshing || hoverActive || panActive || document.hidden
+    || asOf != null    // rewound: viewing the past, so the live poll is paused
     || document.activeElement === $("query")
     || mainEl.classList.contains("lnav");
 }
@@ -606,7 +680,7 @@ async function refreshData() {
   refreshing = true;
   const sc = $("plist").scrollTop;
   try {
-    const rl = await fetch("/api/graph?all=1&max_nodes=20000");
+    const rl = await fetch(asq("/api/graph?all=1&max_nodes=20000"));
     const dl = await rl.json();
     if (rl.ok && !dl.error) {
       allProcs = (dl.nodes || []).filter((n) => n.kind === "process");
@@ -614,7 +688,7 @@ async function refreshData() {
       renderList();
     }
     if (currentPid != null) {
-      const rg = await fetch(`/api/graph?pid=${currentPid}&family=1${expanded ? "&expand=1" : ""}&min_confidence=${$("minc").value}`);
+      const rg = await fetch(asq(`/api/graph?pid=${currentPid}&family=1${expanded ? "&expand=1" : ""}&min_confidence=${$("minc").value}`));
       const dg = await rg.json();
       if (rg.ok && !dg.error) applyGraphUpdate(dg);
     }
@@ -630,10 +704,18 @@ function autoTick() { if (!busy()) refreshData(); }  // skip this beat if mid-in
 function noteTs(ts) {
   if (ts != null && (lastTs == null || ts > lastTs)) { lastTs = ts; staleCount = 0; frozen = false; }
   else if (++staleCount >= 2) frozen = true;
+  // the capture keeps growing; the live edge of the timeline tracks the newest event
+  if (lastTs != null && tlMax != null && lastTs > tlMax) { tlMax = lastTs; if (asOf == null) tlPaint(1); }
   updateLiveLabel();
 }
 function updateLiveLabel() {
   const chip = document.querySelector(".dbchip"), live = $("live");
+  if (asOf != null) {  // rewound — the poll is paused; the header says so, the Live button snaps back
+    live.textContent = `⏸ rewound · ${fmtClock(asOf)}`; live.className = "livebtn frozen";
+    live.title = "Viewing the past — auto-refresh paused. Click Live (or the timeline's Live button) to return to now.";
+    chip.classList.add("paused"); chip.classList.remove("frozen");
+    return;
+  }
   if (autoMs === 0) {
     live.textContent = "paused"; live.className = "livebtn"; live.title = "Auto-refresh off — click to resume";
     chip.classList.add("paused"); chip.classList.remove("frozen");
@@ -654,7 +736,10 @@ function setAuto(ms) {
   if (ms > 0) { autoTimer = setInterval(autoTick, ms); if (wasOff) { staleCount = 0; frozen = false; } }  // fresh chance on resume
   updateLiveLabel();
 }
-$("live").addEventListener("click", () => setAuto(AUTO_STEPS[(AUTO_STEPS.indexOf(autoMs) + 1) % AUTO_STEPS.length]));
+$("live").addEventListener("click", () => {
+  if (asOf != null) { snapLive(); return; }  // rewound -> the button returns to now
+  setAuto(AUTO_STEPS[(AUTO_STEPS.indexOf(autoMs) + 1) % AUTO_STEPS.length]);
+});
 
 loadAll();
 setAuto(autoMs);  // start the live poll (first tick one interval from now)
