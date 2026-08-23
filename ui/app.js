@@ -6,6 +6,9 @@ const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, (c) => ({ "&":
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "?";
 // Append the timeline position (as_of, ns) to any API URL when rewound; no-op when live.
 const asq = (url) => (asOf == null ? url : url + (url.includes("?") ? "&" : "?") + "as_of=" + asOf);
+// A small "i" help marker. `t` is plain help text (may contain <b>/<code>); never put a literal
+// double-quote in it — it lives in an attribute. Any element with data-help gets the same popover.
+const H = (t) => `<span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="${t}"></span>`;
 
 // ---- visual helpers ----
 // Monochrome by design: tiles are neutral slate (no per-process hue), red is
@@ -268,11 +271,11 @@ function inspectorBody(n, d) {
     const c = d.cpu || {}, m = d.rss || {};
     const st = d.status === "running" ? '<span class="stpill run">running</span>' : '<span class="stpill">exited</span>';
     res = `
-      <div style="margin-top:14px">${st} <span style="color:var(--muted);font-size:12px">· ${d.sample_count} samples</span></div>
-      <div class="kick" style="margin-top:16px">CPU</div>
+      <div style="margin-top:14px">${st}${H("Whether this program is still running, or has already quit. Based on whether we saw it in the most recent samples.")} <span style="color:var(--muted);font-size:12px">· ${d.sample_count} samples</span></div>
+      <div class="kick" style="margin-top:16px">CPU${H("Share of one processor core this program used. <b>100%</b> = one core fully busy; a program spread across several cores can go above 100%. <b>now</b> is the latest reading, <b>peak</b> the highest, <b>avg</b> the average over the recorded window.")}</div>
       <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.cpu), 260, 44, true)}</div>
       <div class="stats"><span>now <b style="color:${cpuColor(c.now)}">${fmtPct(c.now)}</b></span><span>peak <b style="color:${cpuColor(c.peak)}">${fmtPct(c.peak)}</b></span><span>avg <b>${fmtPct(c.avg)}</b></span></div>
-      <div class="kick" style="margin-top:16px">Memory</div>
+      <div class="kick" style="margin-top:16px">Memory${H("How much memory (RAM) this program is holding. <b>now</b> is the latest reading; <b>peak</b> is the most it ever held during the recording.")}</div>
       <div class="sparkwrap">${sparkline((d.series || []).map((s) => s.rss), 260, 44, false)}</div>
       <div class="stats"><span>now <b>${humanBytes(m.now)}</b></span><span>peak <b>${humanBytes(m.peak)}</b></span></div>`;
   }
@@ -283,9 +286,9 @@ function inspectorBody(n, d) {
       <dt>started</dt><dd>${fmtTime(n.spawn_ts)}</dd>
     </dl>
     ${res}
-    <div class="kick" style="margin-top:16px">Open files</div>
+    <div class="kick" style="margin-top:16px">Open files${H("Files this program touched that the recorder captured. A file here that changed just before the program reacted is drawn as a dashed <b>file → program</b> link in the graph.")}</div>
     <div class="files">${files.length ? files.map((f) => `<span class="fpill">${esc(base(f))}</span>`).join("") : '<span class="hint" style="color:var(--muted)">none captured</span>'}</div>
-    <div class="actions"><button class="inspect" id="inspect">Inspect</button><button class="kill" id="kill">Kill −9</button></div>`;
+    <div class="actions"><button class="inspect" id="inspect">Inspect</button><button class="kill" id="kill" data-help="Force-quit this program (sends SIGKILL). It stops immediately — any unsaved work in it is lost. Asks you to confirm first.">Kill −9</button></div>`;
 }
 function wireInspector(n) {
   $("inspect").onclick = () => openInspect(n);
@@ -785,6 +788,9 @@ $("f").addEventListener("submit", (e) => {
 $("query").addEventListener("input", (e) => { filterText = e.target.value.trim(); renderList(); applyGraphFilter(); });
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; sortMode = b.dataset.sort; [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b)); renderList(); });
 $("gtabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; groupMode = b.dataset.group; [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b)); renderList(); });
+// Changing the confidence threshold must re-query the graph NOW (not silently wait for the
+// next poll) — otherwise the control feels dead. Re-centre the current family with the new floor.
+$("minc").addEventListener("change", () => { if (currentPid != null) focusPid(currentPid); });
 $("cpuMin").addEventListener("input", (e) => { filterCpu = +e.target.value; $("cpuLbl").textContent = `${filterCpu}%`; renderList(); applyGraphFilter(); });
 $("memMin").addEventListener("input", (e) => { filterMem = +e.target.value; $("memLbl").textContent = `${filterMem} MiB`; renderList(); applyGraphFilter(); });
 $("reset").addEventListener("click", () => { filterCpu = 0; filterMem = 0; filterText = ""; $("cpuMin").value = 0; $("memMin").value = 0; $("query").value = ""; $("cpuLbl").textContent = "0%"; $("memLbl").textContent = "0 MiB"; renderList(); applyGraphFilter(); });
@@ -921,6 +927,31 @@ $("live").addEventListener("click", () => {
   if (asOf != null) { snapLive(); return; }  // rewound -> the button returns to now
   setAuto(AUTO_STEPS[(AUTO_STEPS.indexOf(autoMs) + 1) % AUTO_STEPS.length]);
 });
+
+// ---- help popover engine ----
+// One shared popover, shown on hover/focus of ANY element carrying data-help (the small "i"
+// markers, and a few icon buttons). Clamped to the viewport; flips above if it'd overflow.
+(function helpSystem() {
+  const pop = document.createElement("div"); pop.id = "help-pop"; document.body.appendChild(pop);
+  let hideT = 0, cur = null;
+  function show(el) {
+    const txt = el.getAttribute("data-help"); if (!txt) return;
+    clearTimeout(hideT); cur = el;
+    pop.innerHTML = txt; pop.classList.add("show");
+    const r = el.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, m = 8;
+    let left = Math.max(m, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - m));
+    let top = r.bottom + 8;
+    if (top + ph > window.innerHeight - m) top = r.top - ph - 8;  // flip above when no room below
+    pop.style.left = left + "px"; pop.style.top = Math.max(m, top) + "px";
+  }
+  function hide(el) { if (el && el !== cur) return; hideT = setTimeout(() => { pop.classList.remove("show"); cur = null; }, 60); }
+  const near = (e) => (e.target.closest ? e.target.closest("[data-help]") : null);
+  document.addEventListener("mouseover", (e) => { const el = near(e); if (el) show(el); });
+  document.addEventListener("mouseout", (e) => { const el = near(e); if (el) hide(el); });
+  document.addEventListener("focusin", (e) => { const el = near(e); if (el) show(el); });
+  document.addEventListener("focusout", (e) => { const el = near(e); if (el) hide(el); });
+  window.addEventListener("scroll", () => pop.classList.remove("show"), true);
+})();
 
 loadAll();
 setAuto(autoMs);  // start the live poll (first tick one interval from now)

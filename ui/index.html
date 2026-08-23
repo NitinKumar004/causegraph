@@ -229,6 +229,19 @@
     .legend .ln { width: 18px; border-top: 1.5px solid rgba(148,163,184,.6); } .legend .ln.dash { border-top: 1.5px dashed rgba(154,163,178,.6); }
     .expandlink { color: var(--acc-2); cursor: pointer; } .expandlink:hover { text-decoration: underline; }
 
+    /* ===================== help ("what's this?") ===================== */
+    .help { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-left: 6px;
+      border-radius: 50%; border: 1px solid var(--line-2); color: var(--muted); font: 700 9px ui-monospace, monospace;
+      cursor: help; vertical-align: middle; flex: none; user-select: none; transition: color .12s, border-color .12s; }
+    .help::before { content: "i"; }
+    .help:hover, .help:focus { color: var(--acc-2); border-color: var(--acc-2); outline: none; }
+    #help-pop { position: fixed; z-index: 200; max-width: 290px; background: var(--card-2); color: var(--text-2);
+      border: 1px solid var(--line-2); border-radius: 10px; padding: 11px 13px; font: 400 12.5px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      box-shadow: 0 10px 34px rgba(0,0,0,.55); opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s; pointer-events: none; }
+    #help-pop.show { opacity: 1; transform: translateY(0); }
+    #help-pop b { color: var(--text); font-weight: 640; }
+    #help-pop code { font: 12px ui-monospace, monospace; color: var(--acc-2); }
+
     /* ===================== timeline rewind ===================== */
     #timeline { height: 46px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 18px;
       border-top: 1px solid var(--line); background: var(--panel); }
@@ -385,22 +398,22 @@
           <input id="query" type="text" placeholder="Filter by name or pid">
           <span class="kbd">⌘K</span>
         </div>
-        <div class="confbtn">
+        <div class="confbtn" data-help="How sure the engine must be that one thing <b>caused</b> another before it's drawn. CauseGraph infers that a file change triggered a program; this hides the shakier guesses. <code>conf ≥ 0.9</code> shows only very confident links, <code>show all</code> shows every guess. It only affects the dashed <b>file → program</b> links — the solid <b>started-by</b> lines are always certain, so on a machine with few file causes changing this may show no visible difference.">
           <select id="minc"><option value="0.5" selected>conf ≥ 0.5</option><option value="0.0">show all</option><option value="0.7">conf ≥ 0.7</option><option value="0.9">conf ≥ 0.9</option></select>
           <span class="chev">▾</span>
         </div>
       </div>
     </form>
-    <button id="incBtn" class="incbtn" title="Notable moments — spikes, leaks, crash-loops">
+    <button id="incBtn" class="incbtn" aria-label="Incidents" data-help="Notable moments CauseGraph spotted on its own — CPU spikes, memory leaks, and programs that keep crashing and restarting. The number is how many it found. Click to see the list and jump to any of them.">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
       <span id="incCount">0</span>
     </button>
-    <button id="exportBtn" class="incbtn" title="Export a self-contained report of this view">
+    <button id="exportBtn" class="incbtn" aria-label="Export report" data-help="Save what you're seeing right now as one HTML file — the summary, top programs, incidents, and the graph. It opens in any browser with no internet, so you can keep it or hand it to IT or a teammate for help.">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Export
     </button>
     <button id="live" class="livebtn on" title="Auto-refresh — click to change interval">live · 4s</button>
-    <div class="dbchip"><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
+    <div class="dbchip" data-help="The recording being read, and how many items are on screen. Everything stays on your computer — nothing is ever uploaded."><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
   </header>
 
   <main>
@@ -408,17 +421,17 @@
     <div id="scrim"></div>
     <!-- LEFT -->
     <aside class="left">
-      <div class="panel-head"><span class="kick">Processes</span><span class="count" id="pcount"></span></div>
-      <div id="mstatus" class="mstatus quiet"><span class="dotq"></span>Reading your machine…</div>
+      <div class="panel-head"><span class="kick">Processes<span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="Everything running on your machine, busiest first. Click any row to see what it is and what launched it."></span></span><span class="count" id="pcount"></span></div>
+      <div id="mstatus" class="mstatus quiet" data-help="A one-line read on how busy your machine is and which apps are working hardest right now."><span class="dotq"></span>Reading your machine…</div>
       <div class="filters">
-        <div class="gtabs" id="gtabs">
+        <div class="gtabs" id="gtabs" data-help="<b>Apps</b> groups a program with all its helpers (every Chrome helper becomes one 'Google Chrome'). <b>Processes</b> lists each one on its own.">
           <button data-group="app" class="on">Apps</button><button data-group="proc">Processes</button>
         </div>
-        <div class="tabs" id="tabs">
+        <div class="tabs" id="tabs" data-help="Sort the list by processor use (CPU), memory use (MEM), or name (A–Z).">
           <button data-sort="cpu" class="on">CPU</button><button data-sort="mem">MEM</button><button data-sort="az">A–Z</button>
         </div>
-        <div class="frow"><label>CPU ≥ <b id="cpuLbl">0%</b></label><input id="cpuMin" type="range" min="0" max="100" value="0"></div>
-        <div class="frow"><label>MEM ≥ <b id="memLbl">0 MiB</b></label><input id="memMin" type="range" min="0" max="2000" value="0"></div>
+        <div class="frow" data-help="Hide anything using less than this much CPU. Drag right to show only the busy programs."><label>CPU ≥ <b id="cpuLbl">0%</b></label><input id="cpuMin" type="range" min="0" max="100" value="0"></div>
+        <div class="frow" data-help="Hide anything holding less than this much memory."><label>MEM ≥ <b id="memLbl">0 MiB</b></label><input id="memMin" type="range" min="0" max="2000" value="0"></div>
         <span class="reset" id="reset">Reset filters</span>
       </div>
       <div class="plist" id="plist"></div>
@@ -440,7 +453,7 @@
 
     <!-- RIGHT -->
     <aside class="right" id="panel">
-      <div class="kick">Selection</div>
+      <div class="kick">Selection<span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="Details of the program you clicked — what it is, how much CPU and memory it's using, the files it touched, and the chain of programs that launched it."></span></div>
       <div class="sel-name" id="s-name">Nothing selected</div>
       <div class="sel-path sel-empty" id="s-path">Click a process to inspect it.</div>
       <div id="s-body"></div>
@@ -457,6 +470,7 @@
     <button id="tlLive" class="tl-live" title="Return to now and resume live updates">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Live
     </button>
+    <span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="Drag the handle to rewind — the whole screen shows what your machine was doing at that earlier moment (programs, graph, incidents, everything). Auto-refresh pauses while you're in the past; press <b>Live</b> to jump back to now."></span>
     <span class="tl-start" id="tl-start">—</span>
     <div class="tl-track" id="tl-track">
       <div class="tl-fill" id="tl-fill"></div>
@@ -481,6 +495,7 @@
 
   <footer>
     <div class="legend">
+      <span class="l" style="gap:0"><b style="color:var(--text-2)">Graph</b><span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="How to read it: <b>boxes</b> are programs, <b>circles</b> are files. A <b>solid line</b> means the program above started the one below. A <b>dashed line</b> means a file change likely triggered that program. The highlighted box is the one you selected."></span></span>
       <span class="l"><span class="sw" style="background:rgba(125,211,252,.35);border:1px solid rgba(125,211,252,.6)"></span>process</span>
       <span class="l"><span class="sw round" style="background:rgba(154,163,178,.25);border:1px dashed rgba(154,163,178,.7)"></span>file</span>
       <span class="l"><span class="ln"></span>spawned</span>
