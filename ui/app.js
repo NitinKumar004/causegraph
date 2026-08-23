@@ -439,6 +439,7 @@ function openIncidents() {
   s.querySelectorAll(".inc-card[data-pid]").forEach((el) => {
     el.onclick = () => { closeIncidents(); focusPid(+el.getAttribute("data-pid")); ensurePanelOpen(); };
   });
+  renderAlerts(s);  // watches panel below the incident cards
 }
 function closeIncidents() { $("incidents-modal").classList.remove("show"); }
 $("incBtn").addEventListener("click", openIncidents);
@@ -598,6 +599,87 @@ function exportReport() {
   } catch (e) { toast("Couldn't build the report", "err"); }
 }
 $("exportBtn").addEventListener("click", exportReport);
+
+// ---- alerts / watches (v1.3b) ----
+// Rules live in localStorage; evaluation is client-side on each poll. A rule fires ONCE
+// when it crosses its threshold (tracked by rule.active) — not repeatedly every 4s.
+const AL_KEY = "cg.alerts.rules";
+let alertRules = (() => { try { return JSON.parse(localStorage.getItem(AL_KEY) || "[]"); } catch (_) { return []; } })();
+let alertLog = [];  // in-memory session log of what fired, newest first
+function saveRules() { try { localStorage.setItem(AL_KEY, JSON.stringify(alertRules.map(({ active, ...r }) => r))); } catch (_) {} }
+const alUnit = (m) => (m === "cpu" ? "%" : " MiB");
+const alLabel = (r) => `${r.metric === "cpu" ? "CPU" : "Memory"} ≥ ${r.value}${alUnit(r.metric)}`;
+// Roll up alive processes by app -> {cpu total, mem MiB total}; the same grouping the list shows.
+function appRollups() {
+  const g = {};
+  for (const n of allProcs.filter(alive)) { const k = appOf(n.exe); const e = g[k] || (g[k] = { cpu: 0, mem: 0 }); e.cpu += curCpu(n); e.mem += mib(curMem(n)); }
+  return g;
+}
+function evaluateAlerts() {
+  if (!alertRules.length || asOf != null) return;  // don't fire on rewound/past data
+  const roll = appRollups();
+  for (const r of alertRules) {
+    const entries = r.app ? (roll[r.app] ? [[r.app, roll[r.app]]] : []) : Object.entries(roll);
+    let hit = null;  // the highest-crossing app for this rule
+    for (const [app, e] of entries) { const v = r.metric === "cpu" ? e.cpu : e.mem; if (v >= r.value && (!hit || v > hit.v)) hit = { app, v }; }
+    if (hit && !r.active) {  // rising edge -> fire once
+      r.active = true;
+      const val = r.metric === "cpu" ? `${hit.v.toFixed(0)}%` : `${humanBytes(hit.v * 1048576)}`;
+      const text = `${hit.app} — ${r.metric === "cpu" ? "CPU" : "memory"} ${val} (≥ ${r.value}${alUnit(r.metric)})`;
+      alertLog.unshift({ t: fmtClock((lastTs != null ? lastTs : Date.now() * 1e6)), text });
+      if (alertLog.length > 30) alertLog.pop();
+      toast(`⚠ ${text}`);
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        try { new Notification("CauseGraph alert", { body: text }); } catch (_) {}
+      }
+      if ($("incidents-modal").classList.contains("show")) renderAlerts($("incidents-sheet"));
+    } else if (!hit && r.active) {
+      r.active = false;  // dropped back below — armed to fire again next time it crosses
+    }
+  }
+}
+function alertsSectionHTML() {
+  const notif = (typeof Notification !== "undefined")
+    ? (Notification.permission === "granted"
+        ? '<div class="al-note" style="color:var(--muted)">System notifications on.</div>'
+        : Notification.permission === "default"
+          ? '<div class="al-note">Want a system pop-up too? <a id="al-notify">Enable notifications</a></div>' : "")
+    : "";
+  const rules = alertRules.length
+    ? alertRules.map((r) => `<div class="al-rule${r.active ? " on" : ""}"><b>${esc(alLabel(r))}</b>${r.app ? `<span class="for">· ${esc(r.app)}</span>` : ""}<button class="rm" data-id="${r.id}" title="Remove">×</button></div>`).join("")
+    : '<div class="al-empty">No watches yet. Add one above — e.g. CPU ≥ 80% — and CauseGraph tells you when it happens.</div>';
+  const log = alertLog.length
+    ? `<div class="al-log"><div class="kick">Recently fired</div>${alertLog.map((l) => `<div class="al-log-item"><span class="t">${esc(l.t)}</span><span>${esc(l.text)}</span></div>`).join("")}</div>` : "";
+  return `<div class="al-sec">
+    <div class="kick">Alerts <span style="color:var(--dim);font-weight:500;text-transform:none;letter-spacing:0">— tell me when…</span></div>
+    <div class="al-add">
+      <select id="al-metric"><option value="cpu">CPU %</option><option value="mem">Memory MiB</option></select>
+      <span class="op">≥</span>
+      <input id="al-value" type="number" min="0" step="1" value="80">
+      <input id="al-app" type="text" placeholder="any app (optional)">
+      <button class="al-btn" id="al-add">Add watch</button>
+    </div>
+    ${rules}${log}${notif}</div>`;
+}
+function renderAlerts(sheet) {
+  let host = sheet.querySelector(".al-sec");
+  if (host) { host.outerHTML = alertsSectionHTML(); } else { sheet.insertAdjacentHTML("beforeend", alertsSectionHTML()); }
+  wireAlerts(sheet);
+}
+function wireAlerts(sheet) {
+  const add = sheet.querySelector("#al-add");
+  if (add) add.onclick = () => {
+    const metric = sheet.querySelector("#al-metric").value;
+    const value = parseFloat(sheet.querySelector("#al-value").value);
+    const app = sheet.querySelector("#al-app").value.trim();
+    if (!(value >= 0)) { toast("Enter a threshold", "err"); return; }
+    alertRules.push({ id: String(Date.now()) + Math.floor((lastTs || 0) % 1000), metric, value, app, active: false });
+    saveRules(); evaluateAlerts(); renderAlerts(sheet);
+  };
+  sheet.querySelectorAll(".al-rule .rm").forEach((b) => { b.onclick = () => { alertRules = alertRules.filter((r) => r.id !== b.dataset.id); saveRules(); renderAlerts(sheet); }; });
+  const nb = sheet.querySelector("#al-notify");
+  if (nb) nb.onclick = () => { Notification.requestPermission().then(() => renderAlerts(sheet)); };
+}
 function showFile(n) {
   $("s-name").textContent = base(n.path); $("s-path").className = "sel-path"; $("s-path").textContent = n.path || "";
   const conf = (graphData.edges.find((e) => e.rule === "file_watch" && e.source === n.id) || {}).conf;
@@ -676,6 +758,7 @@ async function loadAll() {
   renderList();
   fetchIncidents();  // lazy, non-blocking — fills the header badge after first paint
   fetchWindow();     // populate the timeline scrubber range
+  evaluateAlerts();  // check watches against the first read
   const live = allProcs.filter(alive);
   if (!allProcs.length) { emptyState("Nothing captured yet", "The recorder hasn't written any events. Start it with <code>cg up</code> — then this fills in within a few seconds."); return; }
   if (!live.length) { emptyState("Recorder looks stopped", "The capture has history but nothing was sampled recently — the recorder isn't writing. Restart it with <code>cg up</code>."); return; }
@@ -783,6 +866,7 @@ async function refreshData() {
       allProcs = (dl.nodes || []).filter((n) => n.kind === "process");
       $("art-sub").textContent = `sqlite · ${allProcs.length} processes${dl.truncated ? "+" : ""}`;
       renderList();
+      evaluateAlerts();  // re-check watches against the fresh roll-ups each poll
     }
     if (currentPid != null) {
       const rg = await fetch(asq(`/api/graph?pid=${currentPid}&family=1${expanded ? "&expand=1" : ""}&min_confidence=${$("minc").value}`));

@@ -76,6 +76,28 @@
     .inc-ic.crashloop { color: #e0b062; background: rgba(224,176,98,.1); border: 1px solid rgba(224,176,98,.3); }
     .inc-card .t { font-weight: 620; font-size: 13.5px; color: #eef1f7; }
     .inc-card .d { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    /* alerts / watches (inside the incidents modal) */
+    .al-sec { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 18px; }
+    .al-add { display: flex; gap: 7px; align-items: center; margin: 10px 0 14px; flex-wrap: wrap; }
+    .al-add select, .al-add input { font: inherit; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,.04);
+      border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 8px; }
+    .al-add input[type=number] { width: 68px; } .al-add input[type=text] { flex: 1; min-width: 90px; }
+    .al-add .op { color: var(--muted); font-size: 13px; }
+    .al-btn { font: 600 12px inherit; font-family: inherit; color: var(--acc-2); background: rgba(125,211,252,.1);
+      border: 1px solid rgba(125,211,252,.35); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+    .al-btn:hover { background: rgba(125,211,252,.2); }
+    .al-rule { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 8px; margin-top: 7px;
+      background: var(--card); border: 1px solid var(--line); font-size: 13px; }
+    .al-rule.on { border-color: rgba(224,176,98,.4); background: rgba(224,176,98,.07); }
+    .al-rule b { font-weight: 640; } .al-rule .for { color: var(--muted); font-size: 12px; }
+    .al-rule .rm { margin-left: auto; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+    .al-rule .rm:hover { color: var(--hot); }
+    .al-empty { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+    .al-log { margin-top: 14px; }
+    .al-log-item { display: flex; gap: 9px; font-size: 12.5px; color: var(--text-2); padding: 4px 0; border-top: 1px dashed var(--line); }
+    .al-log-item .t { color: var(--muted); font: 500 11.5px ui-monospace, monospace; flex: none; }
+    .al-note { font-size: 11.5px; margin-top: 12px; }
+    .al-note a { color: var(--acc-2); cursor: pointer; } .al-note a:hover { text-decoration: underline; }
     .dbchip b { color: var(--text); font-weight: 600; }
 
     /* ===================== body ===================== */
