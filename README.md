@@ -19,9 +19,17 @@ Needs only **Python 3.10+** — no Go, no compiler, no build.
 curl -fsSL https://raw.githubusercontent.com/NitinKumar004/causegraph/main/install.sh | sh
 ```
 
-The installer downloads the prebuilt bundle for your OS/arch and **sets it up to run
-automatically** (`cg setup`): a background recorder and the dashboard both start now and on every
-login. When it finishes, just open **http://localhost:8765** — that's it, nothing to run.
+The installer verifies the download (sha256 + GitHub build provenance) before extracting, then
+downloads the prebuilt bundle for your OS/arch and **sets it up to run automatically**
+(`cg setup`): a background recorder and the dashboard both start now and on every login. When it
+finishes, just open **http://localhost:8765** — that's it, nothing to run.
+
+Prefer Homebrew?
+
+```bash
+brew install NitinKumar004/causegraph/causegraph
+cg up
+```
 
 - **Stop / remove it:** `cg teardown`
 - **Check it:** `cg status`

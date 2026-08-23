@@ -1,0 +1,59 @@
+# Homebrew formula for CauseGraph — rendered by scripts/render-homebrew-formula.sh from the
+# release's SHA256SUMS, then published to the tap (NitinKumar004/homebrew-causegraph) by CI.
+# Do not edit the @TOKENS@ by hand; they are filled in per release.
+class Causegraph < Formula
+  desc "Local causal flight-recorder: why every process on your machine exists"
+  homepage "https://github.com/NitinKumar004/causegraph"
+  version "@VERSION@"
+
+  # The recorder is a Go binary; the engine/UI run on Python (>=3.10). We ship the same
+  # self-contained, checksum-verified release archive the curl installer uses.
+  depends_on "python@3.12"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/NitinKumar004/causegraph/releases/download/v#{version}/causegraph-v#{version}-darwin-arm64.tar.gz"
+      sha256 "@SHA_DARWIN_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/NitinKumar004/causegraph/releases/download/v#{version}/causegraph-v#{version}-darwin-amd64.tar.gz"
+      sha256 "@SHA_DARWIN_AMD64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/NitinKumar004/causegraph/releases/download/v#{version}/causegraph-v#{version}-linux-arm64.tar.gz"
+      sha256 "@SHA_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/NitinKumar004/causegraph/releases/download/v#{version}/causegraph-v#{version}-linux-amd64.tar.gz"
+      sha256 "@SHA_LINUX_AMD64@"
+    end
+  end
+
+  def install
+    # Preserve the archive layout under libexec (bin/ engine/ vendor/ ui/ scripts/): the cg
+    # wrapper resolves its ROOT from its own path and the engine finds bin/cged relative to it.
+    libexec.install Dir["*"]
+    # An exec shim (NOT a symlink): the shim's target path becomes $0 inside cg, so ROOT still
+    # points at libexec. A bare symlink would set ROOT to Homebrew's prefix and break it.
+    (bin/"cg").write_exec_script(libexec/"scripts/cg")
+  end
+
+  test do
+    assert_match "CauseGraph", shell_output("#{bin}/cg --help")
+  end
+
+  def caveats
+    <<~EOS
+      Start CauseGraph:
+        cg up        # start the recorder + open the live dashboard (http://127.0.0.1:8765)
+        cg down      # stop it
+        cg setup     # optional: run automatically at every login
+
+      Everything stays on your machine — the capture lives in ~/.causegraph and is
+      never uploaded. Needs Python 3.10+ (installed as a dependency).
+    EOS
+  end
+end

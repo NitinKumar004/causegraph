@@ -45,3 +45,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         # ship SHA256SUMS alongside the archives so the installer can verify integrity
         run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/SHA256SUMS --generate-notes --title "${GITHUB_REF_NAME}"
+
+      # Update the Homebrew tap so `brew upgrade causegraph` gets the new version. No-op until
+      # a TAP_TOKEN secret (a PAT with push access to NitinKumar004/homebrew-causegraph) is set.
+      - name: Update Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "TAP_TOKEN not set — skipping Homebrew tap update."; exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          scripts/render-homebrew-formula.sh "$version" dist/SHA256SUMS > causegraph.rb
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/NitinKumar004/homebrew-causegraph.git" tap
+          mkdir -p tap/Formula
+          cp causegraph.rb tap/Formula/causegraph.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/causegraph.rb
+          git commit -m "causegraph ${GITHUB_REF_NAME}" || { echo "no change"; exit 0; }
+          git push
