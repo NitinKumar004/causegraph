@@ -260,6 +260,17 @@
     .modal { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
       background: rgba(0,0,0,.55); backdrop-filter: blur(3px); padding: 24px; }
     .modal.show { display: flex; }
+    /* confirm dialog (our own, not the browser's) */
+    .confirm-card { width: 400px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line-2);
+      border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 22px 24px; }
+    .confirm-card h3 { margin: 0 0 8px; font-size: 16px; font-weight: 650; }
+    .confirm-card p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.6; }
+    .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .confirm-actions button { height: 36px; padding: 0 16px; border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer; }
+    .c-cancel { border: 1px solid var(--line-2); background: rgba(255,255,255,.04); color: var(--text); }
+    .c-cancel:hover { background: rgba(255,255,255,.09); }
+    .c-ok { border: 1px solid rgba(255,107,107,.4); background: rgba(255,107,107,.14); color: var(--hot-soft); }
+    .c-ok:hover { background: rgba(255,107,107,.22); }
     .sheet { width: 560px; max-width: 92vw; max-height: 82vh; overflow-y: auto; position: relative;
       background: var(--panel); border: 1px solid var(--line-2); border-radius: 16px;
       box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 22px 24px 26px; }
@@ -373,6 +384,16 @@
 
   <div id="snack"></div>
   <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+  <div class="modal" id="confirm">
+    <div class="confirm-card">
+      <h3 id="confirm-title">Are you sure?</h3>
+      <p id="confirm-msg"></p>
+      <div class="confirm-actions">
+        <button class="c-cancel" id="confirm-no">Cancel</button>
+        <button class="c-ok" id="confirm-yes">Confirm</button>
+      </div>
+    </div>
+  </div>
 
   <footer>
     <div class="legend">

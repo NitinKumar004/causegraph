@@ -419,8 +419,25 @@ async function focusPid(pid) {
     if (window.innerWidth <= 660) openNav(false);  // reveal the graph after picking on a phone
   } catch (e) { setError(`request failed: ${e}`); }
 }
+// Our own confirm dialog (not the browser's ugly one). Resolves true/false.
+function askConfirm(title, msg) {
+  return new Promise((resolve) => {
+    $("confirm-title").textContent = title;
+    $("confirm-msg").textContent = msg;
+    const m = $("confirm");
+    const done = (v) => { m.classList.remove("show"); $("confirm-yes").onclick = $("confirm-no").onclick = m.onclick = null; document.removeEventListener("keydown", onKey); resolve(v); };
+    const onKey = (e) => { if (e.key === "Escape") done(false); if (e.key === "Enter") done(true); };
+    $("confirm-yes").onclick = () => done(true);
+    $("confirm-no").onclick = () => done(false);
+    m.onclick = (e) => { if (e.target === m) done(false); };
+    document.addEventListener("keydown", onKey);
+    m.classList.add("show");
+    $("confirm-no").focus();
+  });
+}
+
 async function killPid(pid, name) {
-  if (!confirm(`Kill ${name} (pid ${pid}) with SIGKILL?\nThis cannot be undone.`)) return;
+  if (!(await askConfirm(`Kill ${name}?`, `This force-quits pid ${pid} with SIGKILL. It cannot be undone.`))) return;
   try {
     const r = await fetch(`/api/kill?pid=${pid}`, { method: "POST", headers: { "X-CauseGraph": "1" } });
     const d = await r.json();
