@@ -80,8 +80,5 @@ watched-folder file changes); deeper native kernel capture is on the roadmap.
 
 ## Documentation
 
-All documentation lives in **[`docs/`](docs/)** — start there:
-
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — what's built, what's left, and the next phase to build.
-- **[docs/architecture.md](docs/architecture.md)** — the full design.
-- **[docs/](docs/)** — plans, ADRs, schema and heuristics reference.
+- **[docs/architecture.md](docs/architecture.md)** — how CauseGraph works, with a diagram.
+- **[docs/schema.md](docs/schema.md)** — the event contract shared by the recorder and the engine.

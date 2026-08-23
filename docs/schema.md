@@ -1,39 +1,32 @@
-# Event schema
+# The event contract
 
-`shared/schema/event.schema.json` is the single source of truth (architecture.md §3.3).
-Everything above the capture layer sees only canonical `Event`s and branches on `kind`,
-never on OS.
+Everything CauseGraph records is one canonical **event**. The recorder (Go) and the engine
+(Python) are two separate programs, so this shape is the single contract between them — it is
+defined once and both sides are generated from it, so they can never drift.
 
-## Codegen
-
-`make gen` runs `shared/schema/gen.py`, which emits:
-
-- `daemon/internal/event/event_gen.go` (package `event`, gofmt'd)
-- `engine/causegraph/schema/event_gen.py` (dataclasses)
-
-`make check-gen` fails if either is stale — the drift gate (tested in
-`engine/tests/test_schema_drift.py`). Never hand-edit the generated files.
+Above the recorder, code only ever looks at an event's `kind`; it never knows or cares which
+operating system produced it.
 
 ## Fields
 
-| Field | Type | Notes |
+| Field | Type | Meaning |
 |---|---|---|
-| `id` | string | uuid |
-| `ts` | int64 | nanoseconds since epoch |
-| `host_id` | string | enables fleet mode later |
-| `kind` | enum | `heartbeat` · `process.spawn` · `process.exit` · `resource.sample` |
-| `actor` | object | `pid, ppid, exe, args[], user` — always present |
-| `target` | object? | `path?, socket?` — optional (file/socket events, M3+) |
-| `metrics` | object? | `cpu_pct?, rss_bytes?, temp_c?` — for `resource.sample` |
-| `source` | enum | `poll` (M0–M2) · `ebpf` · `es` · `etw` — provenance for scoring |
-| `confidence` | number | 1.0 for observed facts; < 1 reserved for inferred edges (M4) |
+| `id` | string | unique id for the event |
+| `ts` | int64 | timestamp, nanoseconds |
+| `host_id` | string | which machine (room to grow to many machines later) |
+| `kind` | enum | `heartbeat` · `process.spawn` · `process.exit` · `resource.sample` · `file.change` |
+| `actor` | object | the process the event is about — `pid, ppid, exe, args[], user` |
+| `target` | object? | optional — a `path` or `socket` the event refers to |
+| `metrics` | object? | optional — `cpu_pct`, `rss_bytes`, `temp_c` (for `resource.sample`) |
+| `source` | enum | how it was captured (`poll`, and native backends later) — used when scoring confidence |
+| `confidence` | number | `1.0` for observed facts; below `1.0` for inferred causal links |
 
-Optional fields are omitted (not null) when absent, so Go and Python serialize identically.
-Cross-language fidelity is pinned by `test/fixtures/events.jsonl`, decoded to the same values
-by `daemon/internal/event/codec_test.go` and `engine/tests/test_codec_roundtrip.py`.
+Optional fields are **omitted, not null**, when absent, so both languages serialize an event
+to exactly the same bytes.
 
-## Storage
+## Notes
 
-SQLite `events(seq, ts, pid, ppid, kind, data)` where `data` is the canonical JSON. The engine
-reader depends only on `seq` + `data`, so it reads any DB the daemon wrote. A `meta` row
-records `schema_version` for future additive migrations.
+- The engine reads events in write order and only needs the event's id and its JSON body, so it
+  can read any recording the recorder produced, including older ones.
+- The store keeps a version marker, leaving room for additive changes to the schema without
+  breaking existing recordings.
