@@ -47,4 +47,10 @@ TXT
   ( cd "$DIST" && tar -czf "$name.tar.gz" "$name" && rm -rf "$name" )
   echo "    dist/$name.tar.gz"
 done
+
+# SHA256SUMS over every archive — the installer verifies the download against this before
+# extracting, so a corrupted or tampered archive is refused (integrity). Standard
+# `sha256sum -c` format so it's verifiable by hand too.
+( cd "$DIST" && { command -v sha256sum >/dev/null 2>&1 && sha256sum ./*.tar.gz || shasum -a 256 ./*.tar.gz; } > SHA256SUMS )
+echo "    dist/SHA256SUMS"
 echo "done — archives in dist/"

@@ -62,14 +62,22 @@ func (p *Poller) Capabilities() collector.Caps {
 
 func (p *Poller) Close() error { return nil }
 
-// backoffQuiet: consecutive empty diff ticks before the cadence backs off a step.
+// backoffQuiet: consecutive non-bursty diff ticks before the cadence backs off a step.
 const backoffQuiet = 3
 
-// nextInterval picks the next process-diff cadence. Churn snaps to min (poll fast to
-// catch short-lived processes); sustained quiet (>= backoffQuiet empty ticks) doubles
-// toward max so an idle machine costs nothing. Pure, so it is unit-tested.
-func nextInterval(cur, min, max time.Duration, churn bool, quiet int) (time.Duration, int) {
-	if churn {
+// churnBurst: process-diff events in ONE tick that count as a real burst (a spawn storm
+// worth polling fast to catch short-lived processes). A trickle below this — one or two
+// spawns/exits, which a busy laptop produces continuously — no longer pins the cadence at
+// PollMin: it backs off toward PollMax like an idle machine, so steady low churn doesn't
+// hold the CPU at the 250ms floor forever (the battery/heat cost the audit flagged). A real
+// burst snaps straight back to PollMin, so short-lived-process storms are still caught.
+const churnBurst = 3
+
+// nextInterval picks the next process-diff cadence from the number of diff events this tick.
+// >= churnBurst snaps to min (fast, catch the storm); anything less accumulates toward a
+// back-off that doubles to max after backoffQuiet ticks. Pure, so it is unit-tested.
+func nextInterval(cur, min, max time.Duration, churnCount, quiet int) (time.Duration, int) {
+	if churnCount >= churnBurst {
 		return min, 0
 	}
 	if quiet+1 >= backoffQuiet {
@@ -132,7 +140,7 @@ func (p *Poller) Start(ctx context.Context, out chan<- event.Event) error {
 				}
 			}
 			prev = cur
-			interval, quiet = nextInterval(interval, min, max, len(evs) > 0, quiet)
+			interval, quiet = nextInterval(interval, min, max, len(evs), quiet)
 			diffTimer.Reset(interval)
 		case <-resTicker.C:
 			snap := p.scan(true)
