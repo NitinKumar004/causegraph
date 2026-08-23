@@ -15,6 +15,17 @@ def test_schema_version(graph_db):
     assert reader.schema_version(graph_db) == "1"
 
 
+def test_incremental_read_since_and_max_seq(graph_db, graph_events):
+    # max_seq is the row count here (write order == seq); reading "since" the midpoint
+    # returns only the tail, in order — the basis for the API's incremental cache.
+    total = reader.max_seq(graph_db)
+    assert total == len(graph_events)
+    half = total // 2
+    tail = list(reader.read_events_since(graph_db, half))
+    assert [seq for seq, _ in tail] == list(range(half + 1, total + 1))
+    assert list(reader.read_events_since(graph_db, total)) == []  # nothing new
+
+
 def test_reader_only_reads_data_column(tmp_path, graph_events):
     """A DB with only seq+data (plus required NOT NULL cols) still reads."""
     db = str(tmp_path / "min.db")

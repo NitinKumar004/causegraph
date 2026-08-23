@@ -52,6 +52,18 @@ def test_peak_is_max_over_samples():
     assert attribution.peak(g, key, CPU) == 80.0
 
 
+def test_latest_is_most_recent_sample_even_if_unordered():
+    # latest_* = newest ts, not last in the list; peak_* = max. (v1.1 "current" value)
+    events = [_spawn(5, 1, 10), _sample(5, 20, cpu=30.0, rss=100),
+              _sample(5, 40, cpu=80.0, rss=200), _sample(5, 30, cpu=50.0, rss=150)]
+    g = builder.build(events)
+    attribution.annotate(g, events)
+    key = g.graph["by_pid"][5][0]
+    assert g.nodes[key]["peak_cpu_pct"] == 80.0
+    assert g.nodes[key]["latest_cpu_pct"] == 80.0    # ts=40 wins despite being out of order
+    assert g.nodes[key]["latest_rss_bytes"] == 200
+
+
 def test_sample_attributed_to_correct_instance_on_pid_reuse():
     # pid 5 lives twice; a sample in each window must land on its own instance.
     events = [

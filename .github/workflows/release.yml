@@ -9,7 +9,9 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write   # needed to create the GitHub Release
+  contents: write       # create the GitHub Release
+  id-token: write       # OIDC for keyless build-provenance signing
+  attestations: write   # store the provenance attestation
 
 jobs:
   release:
@@ -31,7 +33,15 @@ jobs:
       - name: Package release archives
         run: scripts/package.sh "${GITHUB_REF_NAME}"
 
+      # Keyless (Sigstore/OIDC) provenance that GitHub's CI built these exact bytes.
+      # `gh attestation verify` in install.sh checks it — no maintainer-held key needed.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'dist/*.tar.gz'
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz --generate-notes --title "${GITHUB_REF_NAME}"
+        # ship SHA256SUMS alongside the archives so the installer can verify integrity
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/SHA256SUMS --generate-notes --title "${GITHUB_REF_NAME}"

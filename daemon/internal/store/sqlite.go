@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 
 	"causegraph.dev/daemon/internal/event"
 
@@ -23,6 +24,13 @@ type SQLite struct {
 // OpenSQLite opens (creating if needed) the events DB at path, enables WAL, and
 // ensures the schema + meta row exist. maxRows is the ring-buffer cap.
 func OpenSQLite(path string, maxRows int64) (*SQLite, error) {
+	// Create the DB file mode 0600 before opening so captured data — which includes full
+	// command lines that can carry secrets — is never world-readable on a shared machine.
+	if path != ":memory:" && path != "" {
+		if f, err := os.OpenFile(path, os.O_CREATE, 0o600); err == nil {
+			f.Close()
+		}
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
@@ -44,6 +52,13 @@ func OpenSQLite(path string, maxRows int64) (*SQLite, error) {
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// The WAL/SHM sidecars hold the same data; lock them to 0600 too (best-effort — they
+	// exist once WAL is initialised, and chmod on a missing file is harmless to ignore).
+	if path != ":memory:" && path != "" {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Chmod(path+suffix, 0o600)
+		}
 	}
 	return s, nil
 }

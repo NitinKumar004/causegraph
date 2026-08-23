@@ -61,6 +61,43 @@
     .livebtn.on { color: var(--acc-2); border-color: rgba(125,211,252,.3); background: rgba(125,211,252,.08); }
     /* frozen = polling but the source stopped writing; amber, informational (not an error) */
     .livebtn.frozen { color: #e0b062; border-color: rgba(224,176,98,.32); background: rgba(224,176,98,.08); }
+    /* incidents header button + cards */
+    .incbtn { display: inline-flex; align-items: center; gap: 6px; font: 600 12px inherit; font-family: inherit; color: var(--text-2);
+      background: rgba(255,255,255,.04); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+    .incbtn:hover { color: var(--text); background: rgba(255,255,255,.08); }
+    .incbtn.has { color: #e0b062; border-color: rgba(224,176,98,.35); background: rgba(224,176,98,.08); }
+    .inc-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 11px; margin-top: 10px;
+      background: var(--card); border: 1px solid var(--line); cursor: pointer; transition: border-color .12s, background .12s; }
+    .inc-card:hover { border-color: var(--line-3); background: var(--card-2); }
+    .inc-card.static { cursor: default; }
+    .inc-ic { width: 30px; height: 30px; flex: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; font: 700 11px ui-monospace, monospace; }
+    .inc-ic.cpu { color: var(--hot); background: rgba(255,107,107,.12); border: 1px solid rgba(255,107,107,.3); }
+    .inc-ic.leak { color: #7dd3fc; background: rgba(125,211,252,.1); border: 1px solid rgba(125,211,252,.3); }
+    .inc-ic.crashloop { color: #e0b062; background: rgba(224,176,98,.1); border: 1px solid rgba(224,176,98,.3); }
+    .inc-card .t { font-weight: 620; font-size: 13.5px; color: #eef1f7; }
+    .inc-card .d { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    /* alerts / watches (inside the incidents modal) */
+    .al-sec { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 18px; }
+    .al-add { display: flex; gap: 7px; align-items: center; margin: 10px 0 14px; flex-wrap: wrap; }
+    .al-add select, .al-add input { font: inherit; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,.04);
+      border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 8px; }
+    .al-add input[type=number] { width: 68px; } .al-add input[type=text] { flex: 1; min-width: 90px; }
+    .al-add .op { color: var(--muted); font-size: 13px; }
+    .al-btn { font: 600 12px inherit; font-family: inherit; color: var(--acc-2); background: rgba(125,211,252,.1);
+      border: 1px solid rgba(125,211,252,.35); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+    .al-btn:hover { background: rgba(125,211,252,.2); }
+    .al-rule { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 8px; margin-top: 7px;
+      background: var(--card); border: 1px solid var(--line); font-size: 13px; }
+    .al-rule.on { border-color: rgba(224,176,98,.4); background: rgba(224,176,98,.07); }
+    .al-rule b { font-weight: 640; } .al-rule .for { color: var(--muted); font-size: 12px; }
+    .al-rule .rm { margin-left: auto; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+    .al-rule .rm:hover { color: var(--hot); }
+    .al-empty { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+    .al-log { margin-top: 14px; }
+    .al-log-item { display: flex; gap: 9px; font-size: 12.5px; color: var(--text-2); padding: 4px 0; border-top: 1px dashed var(--line); }
+    .al-log-item .t { color: var(--muted); font: 500 11.5px ui-monospace, monospace; flex: none; }
+    .al-note { font-size: 11.5px; margin-top: 12px; }
+    .al-note a { color: var(--acc-2); cursor: pointer; } .al-note a:hover { text-decoration: underline; }
     .dbchip b { color: var(--text); font-weight: 600; }
 
     /* ===================== body ===================== */
@@ -69,6 +106,18 @@
       display: flex; flex-direction: column; min-height: 0; }
     .panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 18px 12px; }
     .panel-head .count { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    /* machine-status one-liner */
+    .mstatus { display: block; margin: 0 14px 12px; padding: 10px 12px;
+      border-radius: 10px; font-size: 12.5px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); line-height: 1.5; }
+    .mstatus b { font-weight: 650; }
+    .mstatus .dotq { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: middle;
+      background: var(--acc); box-shadow: 0 0 6px rgba(125,211,252,.7); }
+    .mstatus.quiet { color: var(--text-2); } .mstatus.quiet .dotq { background: var(--muted); box-shadow: none; }
+    .mstatus.busy .dotq { background: var(--hot); box-shadow: 0 0 6px rgba(255,123,114,.8); }
+    /* Apps | Processes grouping toggle */
+    .gtabs { display: flex; gap: 3px; padding: 3px; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 8px; }
+    .gtabs button { flex: 1; height: 26px; border: none; background: none; color: var(--text-2); font: inherit; font-weight: 600; font-size: 11.5px; border-radius: 7px; cursor: pointer; }
+    .gtabs button.on { background: rgba(125,211,252,.14); color: var(--acc-2); }
 
     /* filter card */
     .filters { margin: 0 14px 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
@@ -178,13 +227,53 @@
     .legend .l { display: flex; align-items: center; gap: 7px; }
     .legend .sw { width: 12px; height: 11px; border-radius: 3px; } .legend .sw.round { border-radius: 50%; }
     .legend .ln { width: 18px; border-top: 1.5px solid rgba(148,163,184,.6); } .legend .ln.dash { border-top: 1.5px dashed rgba(154,163,178,.6); }
+    .expandlink { color: var(--acc-2); cursor: pointer; } .expandlink:hover { text-decoration: underline; }
+
+    /* ===================== help ("what's this?") ===================== */
+    .help { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-left: 6px;
+      border-radius: 50%; border: 1px solid var(--line-2); color: var(--muted); font: 700 9px ui-monospace, monospace;
+      cursor: help; vertical-align: middle; flex: none; user-select: none; transition: color .12s, border-color .12s; }
+    .help::before { content: "i"; }
+    .help:hover, .help:focus { color: var(--acc-2); border-color: var(--acc-2); outline: none; }
+    #help-pop { position: fixed; z-index: 200; max-width: 290px; background: var(--card-2); color: var(--text-2);
+      border: 1px solid var(--line-2); border-radius: 10px; padding: 11px 13px; font: 400 12.5px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      box-shadow: 0 10px 34px rgba(0,0,0,.55); opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s; pointer-events: none; }
+    #help-pop.show { opacity: 1; transform: translateY(0); }
+    #help-pop b { color: var(--text); font-weight: 640; }
+    #help-pop code { font: 12px ui-monospace, monospace; color: var(--acc-2); }
+
+    /* ===================== timeline rewind ===================== */
+    #timeline { height: 46px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 18px;
+      border-top: 1px solid var(--line); background: var(--panel); }
+    #timeline.hidden { display: none; }
+    .tl-live { display: none; align-items: center; gap: 5px; font: 600 12px inherit; font-family: inherit; color: var(--acc-2);
+      border: 1px solid rgba(125,211,252,.4); background: rgba(125,211,252,.1); border-radius: 8px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
+    .tl-live:hover { background: rgba(125,211,252,.2); }
+    #timeline.rewound .tl-live { display: inline-flex; }
+    .tl-start, .tl-end { font: 500 11px ui-monospace, monospace; color: var(--muted); white-space: nowrap; min-width: 60px; }
+    .tl-end { text-align: right; }
+    .tl-track { position: relative; flex: 1; height: 6px; border-radius: 4px; background: rgba(148,163,184,.14); cursor: pointer; }
+    .tl-track.loading { background: rgba(125,211,252,.16); animation: tlpulse 1s ease-in-out infinite; }
+    @keyframes tlpulse { 50% { background: rgba(125,211,252,.28); } }
+    .tl-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 4px; background: rgba(125,211,252,.32); pointer-events: none; }
+    #timeline.rewound .tl-fill { background: rgba(224,176,98,.42); }
+    .tl-handle { position: absolute; top: 50%; left: 100%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+      background: var(--acc); border: 2px solid var(--panel); transform: translateY(-50%); box-shadow: 0 1px 5px rgba(0,0,0,.45); cursor: grab; }
+    #timeline.rewound .tl-handle { background: #e0b062; }
+    .tl-handle:active { cursor: grabbing; }
+    .tl-bubble { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+      font: 600 11px ui-monospace, monospace; color: var(--text); background: var(--card-2); border: 1px solid var(--line-2);
+      border-radius: 6px; padding: 3px 8px; opacity: 0; transition: opacity .12s; pointer-events: none; }
+    .tl-track.drag .tl-bubble, #timeline.rewound .tl-bubble { opacity: 1; }
+    @media (max-width: 660px) { .tl-start, .tl-end { display: none; } }
 
     /* overlays */
     .overlay { position: absolute; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 24px; pointer-events: none; }
     .overlay.show { display: flex; }
     .spinner { width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid var(--line-2); border-top-color: var(--acc); animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .overlay h2 { margin: 0; font-size: 16px; } .overlay p { margin: 0; color: var(--muted); max-width: 26rem; }
+    .overlay h2 { margin: 0; font-size: 16px; } .overlay p { margin: 0; color: var(--muted); max-width: 30rem; line-height: 1.6; }
+    .overlay p code { font: 12px ui-monospace, monospace; color: var(--acc-2); background: rgba(125,211,252,.1); border: 1px solid rgba(125,211,252,.2); border-radius: 5px; padding: 1px 6px; }
     .toast { color: #ffd9d7; background: rgba(239,107,102,.13); border: 1px solid rgba(239,107,102,.4); padding: 9px 14px; border-radius: 9px; }
 
     /* ===================== responsive ===================== */
@@ -233,12 +322,13 @@
     }
 
     /* ===================== toast (snack) ===================== */
-    #snack { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
-      z-index: 40; max-width: 80vw; padding: 11px 16px; border-radius: 10px; font-size: 13px;
+    /* toast — top-right so it's clearly visible and above the drawers (z 50) it reports on */
+    #snack { position: fixed; right: 20px; top: 62px; transform: translateY(-12px);
+      z-index: 60; max-width: min(360px, 80vw); padding: 11px 16px; border-radius: 10px; font-size: 13px;
       background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2);
       box-shadow: 0 12px 30px rgba(0,0,0,.55); opacity: 0; pointer-events: none;
       transition: opacity .18s ease, transform .18s ease; }
-    #snack.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #snack.show { opacity: 1; transform: translateY(0); }
     #snack.ok { border-color: rgba(125,211,252,.45); }
     #snack.err { border-color: rgba(255,107,107,.5); color: #ffd9d7; background: rgba(239,107,102,.14); }
 
@@ -246,6 +336,29 @@
     .modal { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
       background: rgba(0,0,0,.55); backdrop-filter: blur(3px); padding: 24px; }
     .modal.show { display: flex; }
+    /* right-side drawers (Incidents, Inspect) — overlay that slides in from the edge, so the
+       graph stays visible behind and it feels like a workspace, not a blocking popup. */
+    .modal.drawer { display: flex; justify-content: flex-end; align-items: stretch; padding: 0;
+      overflow: hidden; background: rgba(0,0,0,.42); backdrop-filter: blur(2px);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+    .modal.drawer.show { opacity: 1; pointer-events: auto; }
+    .modal.drawer .sheet { width: 480px; max-width: 100vw; height: 100%; max-height: none;
+      border-radius: 0; border: 0; border-left: 1px solid var(--line-2);
+      box-shadow: -26px 0 70px rgba(0,0,0,.5); padding: 24px 26px 32px;
+      transform: translateX(102%); transition: transform .28s cubic-bezier(.22,1,.36,1); }
+    .modal.drawer.show .sheet { transform: translateX(0); }
+    @media (prefers-reduced-motion: reduce) { .modal.drawer .sheet { transition: none; } }
+    /* confirm dialog (our own, not the browser's) */
+    .confirm-card { width: 400px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line-2);
+      border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 22px 24px; }
+    .confirm-card h3 { margin: 0 0 8px; font-size: 16px; font-weight: 650; }
+    .confirm-card p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.6; }
+    .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .confirm-actions button { height: 36px; padding: 0 16px; border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer; }
+    .c-cancel { border: 1px solid var(--line-2); background: rgba(255,255,255,.04); color: var(--text); }
+    .c-cancel:hover { background: rgba(255,255,255,.09); }
+    .c-ok { border: 1px solid rgba(255,107,107,.4); background: rgba(255,107,107,.14); color: var(--hot-soft); }
+    .c-ok:hover { background: rgba(255,107,107,.22); }
     .sheet { width: 560px; max-width: 92vw; max-height: 82vh; overflow-y: auto; position: relative;
       background: var(--panel); border: 1px solid var(--line-2); border-radius: 16px;
       box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 22px 24px 26px; }
@@ -298,14 +411,22 @@
           <input id="query" type="text" placeholder="Filter by name or pid">
           <span class="kbd">⌘K</span>
         </div>
-        <div class="confbtn">
+        <div class="confbtn" data-help="How sure the engine must be that one thing <b>caused</b> another before it's drawn. CauseGraph infers that a file change triggered a program; this hides the shakier guesses. <code>conf ≥ 0.9</code> shows only very confident links, <code>show all</code> shows every guess. It only affects the dashed <b>file → program</b> links — the solid <b>started-by</b> lines are always certain, so on a machine with few file causes changing this may show no visible difference.">
           <select id="minc"><option value="0.5" selected>conf ≥ 0.5</option><option value="0.0">show all</option><option value="0.7">conf ≥ 0.7</option><option value="0.9">conf ≥ 0.9</option></select>
           <span class="chev">▾</span>
         </div>
       </div>
     </form>
+    <button id="incBtn" class="incbtn" aria-label="Incidents" data-help="Notable moments CauseGraph spotted on its own — CPU spikes, memory leaks, and programs that keep crashing and restarting. The number is how many it found. Click to see the list and jump to any of them.">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <span id="incCount">0</span>
+    </button>
+    <button id="exportBtn" class="incbtn" aria-label="Export report" data-help="Save what you're seeing right now as one HTML file — the summary, top programs, incidents, and the graph. It opens in any browser with no internet, so you can keep it or hand it to IT or a teammate for help.">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Export
+    </button>
     <button id="live" class="livebtn on" title="Auto-refresh — click to change interval">live · 4s</button>
-    <div class="dbchip"><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
+    <div class="dbchip" data-help="The recording being read, and how many items are on screen. Everything stays on your computer — nothing is ever uploaded."><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
   </header>
 
   <main>
@@ -313,13 +434,17 @@
     <div id="scrim"></div>
     <!-- LEFT -->
     <aside class="left">
-      <div class="panel-head"><span class="kick">Processes</span><span class="count" id="pcount"></span></div>
+      <div class="panel-head"><span class="kick">Processes<span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="Everything running on your machine, busiest first. Click any row to see what it is and what launched it."></span></span><span class="count" id="pcount"></span></div>
+      <div id="mstatus" class="mstatus quiet" data-help="A one-line read on how busy your machine is and which apps are working hardest right now."><span class="dotq"></span>Reading your machine…</div>
       <div class="filters">
-        <div class="tabs" id="tabs">
+        <div class="gtabs" id="gtabs" data-help="<b>Apps</b> groups a program with all its helpers (every Chrome helper becomes one 'Google Chrome'). <b>Processes</b> lists each one on its own.">
+          <button data-group="app" class="on">Apps</button><button data-group="proc">Processes</button>
+        </div>
+        <div class="tabs" id="tabs" data-help="Sort the list by processor use (CPU), memory use (MEM), or name (A–Z).">
           <button data-sort="cpu" class="on">CPU</button><button data-sort="mem">MEM</button><button data-sort="az">A–Z</button>
         </div>
-        <div class="frow"><label>CPU ≥ <b id="cpuLbl">0%</b></label><input id="cpuMin" type="range" min="0" max="100" value="0"></div>
-        <div class="frow"><label>MEM ≥ <b id="memLbl">0 MiB</b></label><input id="memMin" type="range" min="0" max="2000" value="0"></div>
+        <div class="frow" data-help="Hide anything using less than this much CPU. Drag right to show only the busy programs."><label>CPU ≥ <b id="cpuLbl">0%</b></label><input id="cpuMin" type="range" min="0" max="100" value="0"></div>
+        <div class="frow" data-help="Hide anything holding less than this much memory."><label>MEM ≥ <b id="memLbl">0 MiB</b></label><input id="memMin" type="range" min="0" max="2000" value="0"></div>
         <span class="reset" id="reset">Reset filters</span>
       </div>
       <div class="plist" id="plist"></div>
@@ -334,14 +459,14 @@
     <div class="center">
       <div id="cy"></div>
       <div id="nodes"></div>
-      <div class="overlay" id="loading"><div class="spinner"></div><p>building the graph…</p></div>
+      <div class="overlay" id="loading"><div class="spinner"></div><p>Reading your machine… (a large capture can take a few seconds)</p></div>
       <div class="overlay" id="empty"><h2>Trace a cause</h2><p>Pick a process to see its causal graph.</p></div>
       <div class="overlay" id="error"><div class="toast" id="error-msg"></div></div>
     </div>
 
     <!-- RIGHT -->
     <aside class="right" id="panel">
-      <div class="kick">Selection</div>
+      <div class="kick">Selection<span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="Details of the program you clicked — what it is, how much CPU and memory it's using, the files it touched, and the chain of programs that launched it."></span></div>
       <div class="sel-name" id="s-name">Nothing selected</div>
       <div class="sel-path sel-empty" id="s-path">Click a process to inspect it.</div>
       <div id="s-body"></div>
@@ -353,11 +478,37 @@
     </button>
   </main>
 
+  <!-- timeline rewind: drag to view the machine at any past moment -->
+  <div id="timeline" class="hidden">
+    <button id="tlLive" class="tl-live" title="Return to now and resume live updates">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Live
+    </button>
+    <span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="Drag the handle to rewind — the whole screen shows what your machine was doing at that earlier moment (programs, graph, incidents, everything). Auto-refresh pauses while you're in the past; press <b>Live</b> to jump back to now."></span>
+    <span class="tl-start" id="tl-start">—</span>
+    <div class="tl-track" id="tl-track">
+      <div class="tl-fill" id="tl-fill"></div>
+      <div class="tl-handle" id="tl-handle"><span class="tl-bubble" id="tl-bubble"></span></div>
+    </div>
+    <span class="tl-end" id="tl-end">now</span>
+  </div>
+
   <div id="snack"></div>
-  <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+  <div class="modal drawer" id="modal"><div class="sheet" id="sheet"></div></div>
+  <div class="modal drawer" id="incidents-modal"><div class="sheet" id="incidents-sheet"></div></div>
+  <div class="modal" id="confirm">
+    <div class="confirm-card">
+      <h3 id="confirm-title">Are you sure?</h3>
+      <p id="confirm-msg"></p>
+      <div class="confirm-actions">
+        <button class="c-cancel" id="confirm-no">Cancel</button>
+        <button class="c-ok" id="confirm-yes">Confirm</button>
+      </div>
+    </div>
+  </div>
 
   <footer>
     <div class="legend">
+      <span class="l" style="gap:0"><b style="color:var(--text-2)">Graph</b><span class="help" tabindex="0" role="button" aria-label="What's this?" data-help="How to read it: <b>boxes</b> are programs, <b>circles</b> are files. A <b>solid line</b> means the program above started the one below. A <b>dashed line</b> means a file change likely triggered that program. The highlighted box is the one you selected."></span></span>
       <span class="l"><span class="sw" style="background:rgba(125,211,252,.35);border:1px solid rgba(125,211,252,.6)"></span>process</span>
       <span class="l"><span class="sw round" style="background:rgba(154,163,178,.25);border:1px dashed rgba(154,163,178,.7)"></span>file</span>
       <span class="l"><span class="ln"></span>spawned</span>

@@ -90,33 +90,51 @@ func TestSampleThreshold(t *testing.T) {
 	}
 }
 
-// M1a: the adaptive cadence — churn snaps to min, sustained quiet backs off to max.
+// M1a: the adaptive cadence — a burst snaps to min, sustained non-burst backs off to max.
 func TestNextIntervalAdapts(t *testing.T) {
 	min, max := 250*time.Millisecond, 2*time.Second
 
-	// churn always snaps straight to the fast cadence and resets the quiet counter.
-	if got, q := nextInterval(max, min, max, true, 2); got != min || q != 0 {
-		t.Fatalf("churn: got (%v,%d), want (%v,0)", got, q, min)
+	// a real burst (>= churnBurst events) snaps straight to the fast cadence, resets quiet.
+	if got, q := nextInterval(max, min, max, churnBurst, 2); got != min || q != 0 {
+		t.Fatalf("burst: got (%v,%d), want (%v,0)", got, q, min)
 	}
 
-	// from min, quiet ticks accumulate, then back off by doubling on the 3rd.
+	// from min, non-burst ticks accumulate, then back off by doubling on the 3rd.
 	iv, q := min, 0
-	iv, q = nextInterval(iv, min, max, false, q) // quiet 1: hold
+	iv, q = nextInterval(iv, min, max, 0, q) // quiet 1: hold
 	if iv != min || q != 1 {
 		t.Fatalf("quiet#1: got (%v,%d), want (%v,1)", iv, q, min)
 	}
-	iv, q = nextInterval(iv, min, max, false, q) // quiet 2: hold
+	iv, q = nextInterval(iv, min, max, 0, q) // quiet 2: hold
 	if iv != min || q != 2 {
 		t.Fatalf("quiet#2: got (%v,%d), want (%v,2)", iv, q, min)
 	}
-	iv, q = nextInterval(iv, min, max, false, q) // quiet 3: back off, reset
+	iv, q = nextInterval(iv, min, max, 0, q) // quiet 3: back off, reset
 	if iv != 2*min || q != 0 {
 		t.Fatalf("quiet#3: got (%v,%d), want (%v,0)", iv, q, 2*min)
 	}
 
 	// back-off is clamped at max.
-	if got, _ := nextInterval(2*time.Second, min, max, false, backoffQuiet-1); got != max {
+	if got, _ := nextInterval(2*time.Second, min, max, 0, backoffQuiet-1); got != max {
 		t.Fatalf("clamp: got %v, want %v", got, max)
+	}
+}
+
+// The battery fix: a steady TRICKLE (1-2 events/tick, below churnBurst) must NOT pin the
+// cadence at min — it backs off exactly like an idle machine. Before the fix, len(evs)>0
+// snapped to min every tick and it never left the 250ms floor on a busy laptop.
+func TestNextIntervalTrickleBacksOff(t *testing.T) {
+	min, max := 250*time.Millisecond, 2*time.Second
+	iv, q := min, 0
+	for i := 0; i < backoffQuiet; i++ { // trickle of 2 events each tick — below the burst threshold
+		iv, q = nextInterval(iv, min, max, churnBurst-1, q)
+	}
+	if iv <= min {
+		t.Fatalf("steady trickle should back off above min, still at %v", iv)
+	}
+	// ...but a burst mid-trickle immediately snaps back to the fast cadence.
+	if got, _ := nextInterval(iv, min, max, churnBurst, q); got != min {
+		t.Fatalf("burst after trickle should snap to %v, got %v", min, got)
 	}
 }
 

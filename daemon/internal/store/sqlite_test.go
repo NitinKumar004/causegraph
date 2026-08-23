@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -120,6 +121,35 @@ func TestCapInvariantAcrossReopen(t *testing.T) {
 	}
 	if v, _ := s2.MetaSchemaVersion(); v != fmt.Sprint(SchemaVersion) {
 		t.Errorf("meta schema_version after reopen = %q, want %d", v, SchemaVersion)
+	}
+}
+
+// The capture holds full command lines (which can carry secrets), so the DB file and its
+// WAL/SHM sidecars must be private (0600) — not world-readable on a shared machine.
+func TestDBFilesArePrivate(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "perm.db")
+	// Pre-create the file world-readable (as an older daemon would have): reopening must
+	// tighten it, so upgrading fixes an already-loose capture without manual intervention.
+	if f, err := os.OpenFile(p, os.O_CREATE, 0o666); err == nil {
+		f.Close()
+		os.Chmod(p, 0o666)
+	}
+	s, err := OpenSQLite(p, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.WriteBatch([]event.Event{mkEvent(1)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		fi, err := os.Stat(p + suffix)
+		if err != nil {
+			continue // sidecar may not exist depending on checkpoint state
+		}
+		if mode := fi.Mode().Perm(); mode&0o077 != 0 {
+			t.Errorf("%s mode = %04o, want no group/other bits (0600)", p+suffix, mode)
+		}
 	}
 }
 

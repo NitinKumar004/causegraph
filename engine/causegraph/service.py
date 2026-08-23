@@ -22,9 +22,14 @@ LABEL = "dev.causegraph.recorder"  # launchd label / systemd unit stem
 
 
 def data_dir() -> str:
-    """The stable state directory, created on demand."""
+    """The stable state directory, created on demand. Mode 0700 so the capture (which can hold
+    command lines with secrets), logs, and pidfile aren't readable by other users on the host."""
     d = os.environ.get("CAUSEGRAPH_HOME") or os.path.join(os.path.expanduser("~"), ".causegraph")
-    os.makedirs(d, exist_ok=True)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)  # tighten even if it already existed at a looser mode
+    except OSError:
+        pass
     return d
 
 

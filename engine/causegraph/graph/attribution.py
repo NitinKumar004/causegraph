@@ -18,14 +18,19 @@ _PEAK_ATTR = {CPU: "peak_cpu_pct", RSS: "peak_rss_bytes"}
 
 
 def annotate(g: nx.DiGraph, events: list[Event]) -> None:
-    """Set peak_cpu_pct / peak_rss_bytes on every PROCESS node (None if never
-    sampled), taking the max over the resource.samples in each instance's window.
-    FILE nodes are skipped (ADR 0001)."""
+    """Set peak_* (max over the instance's window) AND latest_* (the most recent
+    sample — the "current" value a live monitor shows) on every PROCESS node, None if
+    never sampled. FILE nodes are skipped (ADR 0001)."""
     for key in _process_keys(g):
         data = g.nodes[key]
         data.setdefault("peak_cpu_pct", None)
         data.setdefault("peak_rss_bytes", None)
+        data.setdefault("latest_cpu_pct", None)
+        data.setdefault("latest_rss_bytes", None)
+        data.setdefault("last_seen_ts", None)  # newest sample ts — "is it still alive?"
 
+    latest_cpu_ts: dict = {}  # key -> ts of the newest cpu sample applied (events may be unsorted)
+    latest_rss_ts: dict = {}
     by_pid = g.graph.get("by_pid", {})
     for e in events:
         if e.kind != KIND_RESOURCE_SAMPLE or e.metrics is None:
@@ -34,10 +39,17 @@ def annotate(g: nx.DiGraph, events: list[Event]) -> None:
         if key is None:
             continue
         node = g.nodes[key]
+        node["last_seen_ts"] = e.ts if node["last_seen_ts"] is None else max(node["last_seen_ts"], e.ts)
         if e.metrics.cpu_pct is not None:
             node["peak_cpu_pct"] = _max_opt(node["peak_cpu_pct"], e.metrics.cpu_pct)
+            if e.ts >= latest_cpu_ts.get(key, -1):
+                node["latest_cpu_pct"] = e.metrics.cpu_pct
+                latest_cpu_ts[key] = e.ts
         if e.metrics.rss_bytes is not None:
             node["peak_rss_bytes"] = _max_opt(node["peak_rss_bytes"], e.metrics.rss_bytes)
+            if e.ts >= latest_rss_ts.get(key, -1):
+                node["latest_rss_bytes"] = e.metrics.rss_bytes
+                latest_rss_ts[key] = e.ts
 
 
 def _max_opt(cur, val):
