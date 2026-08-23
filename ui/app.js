@@ -188,17 +188,26 @@ const bySort = (getCpu, getMem, getName) => (a, b) =>
   : sortMode === "mem" ? (getMem(b) || 0) - (getMem(a) || 0)
   : (getCpu(b) || 0) - (getCpu(a) || 0);
 
-function renderStatus() {
-  const el = $("mstatus"); if (!el) return;
+// The one-line machine summary, as data: {tone, top:[[app,cpu]...], text}. Shared by the
+// header status line and the exported report so both tell the same story.
+function statusSummary() {
   const groups = {};
   for (const n of allProcs.filter(alive)) { const k = appOf(n.exe); (groups[k] = groups[k] || { cpu: 0 }).cpu += curCpu(n); }
   const top = Object.entries(groups).sort((a, b) => b[1].cpu - a[1].cpu).filter(([, g]) => g.cpu >= 5).slice(0, 2);
-  if (!top.length) { el.innerHTML = `<span class="dotq"></span>Quiet — nothing's working hard right now.`; el.className = "mstatus quiet"; return; }
-  const parts = top.map(([app, g]) => `<b>${esc(app)}</b> (${g.cpu.toFixed(0)}%)`);
-  const who = parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts[0];
+  if (!top.length) return { tone: "quiet", top: [], text: "Quiet — nothing's working hard right now." };
+  const names = top.map(([app, g]) => `${app} (${g.cpu.toFixed(0)}%)`);
+  const who = names.length === 2 ? `${names[0]} and ${names[1]}` : names[0];
   const busy = top[0][1].cpu >= 100;
-  el.className = "mstatus" + (busy ? " busy" : "");
-  el.innerHTML = `<span class="dotq"></span>${busy ? "Busy" : "Active"} — ${who} ${parts.length === 2 ? "are" : "is"} working hardest.`;
+  return { tone: busy ? "busy" : "active", top, text: `${busy ? "Busy" : "Active"} — ${who} ${names.length === 2 ? "are" : "is"} working hardest.` };
+}
+function renderStatus() {
+  const el = $("mstatus"); if (!el) return;
+  const s = statusSummary();
+  el.className = "mstatus" + (s.tone === "quiet" ? " quiet" : s.tone === "busy" ? " busy" : "");
+  if (s.tone === "quiet") { el.innerHTML = `<span class="dotq"></span>${esc(s.text)}`; return; }
+  const parts = s.top.map(([app, g]) => `<b>${esc(app)}</b> (${g.cpu.toFixed(0)}%)`);
+  const who = parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts[0];
+  el.innerHTML = `<span class="dotq"></span>${s.tone === "busy" ? "Busy" : "Active"} — ${who} ${parts.length === 2 ? "are" : "is"} working hardest.`;
 }
 
 function renderList() {
@@ -501,6 +510,94 @@ function snapLive() {  // return to now: clear as_of, resume the live poll
   track.addEventListener("pointercancel", end);
   $("tlLive").addEventListener("click", snapLive);
 })();
+
+// ---- shareable report (v1.3a) ----
+// Build a self-contained HTML file from the CURRENT view (honoring as_of) and download it.
+// Everything is inlined — the graph is a PNG data URI from cytoscape — so it opens offline
+// anywhere, matching the app's no-external-refs guarantee.
+function reportStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function buildReport() {
+  const s = statusSummary();
+  const when = asOf != null ? `rewound — as of ${fmtClock(asOf)}` : "live — now";
+  const live = allProcs.filter(alive);
+  const top = live.slice().sort((a, b) => curCpu(b) - curCpu(a)).slice(0, 15);
+  const rows = top.map((n) => `<tr><td>${esc(base(n.exe))}</td><td class="n">${n.pid}</td><td class="n${isHot(curCpu(n)) ? " hot" : ""}">${curCpu(n).toFixed(1)}%</td><td class="n">${humanBytes(curMem(n))}</td></tr>`).join("");
+  const incLabel = { cpu: "CPU", leak: "MEM", crashloop: "LOOP" };
+  const incHtml = incidentList.length
+    ? incidentList.map((i) => `<li class="inc ${i.kind}"><span class="tag">${incLabel[i.kind] || "!"}</span><div><b>${esc(i.title)}</b><span class="d">${esc(i.detail)}</span></div></li>`).join("")
+    : `<li class="none">No spikes, leaks, or crash-loops detected.</li>`;
+  let focusHtml = "";
+  const fid = (selectedId && nodeById[selectedId] && nodeById[selectedId].kind === "process") ? selectedId : (graphData && graphData.culprit);
+  const fn = fid && nodeById[fid];
+  if (fn && fn.pid != null) {
+    const cmd = (fn.args && fn.args.length) ? fn.args.join(" ") : (fn.exe || "—");
+    const chain = ancestryChain(fn.id).map((id) => nodeById[id]).filter((x) => x && x.pid != null);
+    const lineage = chain.map((x) => `<span class="chip${x.id === fn.id ? " self" : ""}">${esc(base(x.exe))} ${x.pid}</span>`).join('<span class="arr">→</span>');
+    focusHtml = `<h2>Focused process</h2><div class="focus"><div class="fn">${esc(base(fn.exe))} <span class="fp">pid ${fn.pid}</span></div>
+      <div class="cmd">${esc(cmd)}</div><div class="lin">${lineage || '<span class="muted">no captured parent</span>'}</div></div>`;
+  }
+  let img = "";
+  try { if (cy && cy.elements().length) img = `<h2>Causal graph</h2><img class="graph" alt="causal graph" src="${cy.png({ full: true, scale: 1.5, bg: "#0b0f17" })}">`; } catch (_) {}
+  const db = $("dbname").textContent || "capture";
+  const gen = new Date().toLocaleString();
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CauseGraph report — ${esc(db)} — ${esc(when)}</title>
+<style>
+  :root{--bg:#f6f8fb;--card:#fff;--ink:#0f1622;--mut:#5b6472;--line:#e2e7ee;--acc:#1f7bb8;--hot:#d64541;--warn:#b7791f}
+  *{box-sizing:border-box}body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);padding:32px}
+  .wrap{max-width:860px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;border-bottom:2px solid var(--line);padding-bottom:14px;margin-bottom:22px}
+  h1{font-size:19px;margin:0;letter-spacing:.2px}.sub{color:var(--mut);font-size:12.5px}
+  .badge{font:600 12px ui-monospace,monospace;color:var(--acc);background:rgba(31,123,184,.09);border:1px solid rgba(31,123,184,.25);border-radius:7px;padding:3px 9px}
+  .summary{font-size:16px;font-weight:600;margin:0 0 26px;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:9px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);margin:28px 0 10px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);background:#fafbfd}
+  tr:last-child td{border-bottom:none}.n{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}.hot{color:var(--hot);font-weight:700}
+  ul.inc{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+  .inc li{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
+  .inc .tag{flex:none;font:700 10px ui-monospace,monospace;padding:3px 7px;border-radius:6px;letter-spacing:.04em}
+  .inc.cpu .tag{color:var(--hot);background:rgba(214,69,65,.1)}.inc.leak .tag{color:var(--acc);background:rgba(31,123,184,.1)}.inc.crashloop .tag{color:var(--warn);background:rgba(183,121,31,.12)}
+  .inc b{font-weight:650}.inc .d{display:block;color:var(--mut);font-size:12.5px;margin-top:2px}.inc .none{color:var(--mut);justify-content:center}
+  .focus{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:14px 16px}
+  .fn{font-weight:650;font-size:15px}.fp{color:var(--mut);font-weight:500;font-size:12.5px}
+  .cmd{font:12.5px ui-monospace,monospace;color:#243244;background:#f2f5f9;border:1px solid var(--line);border-radius:7px;padding:8px 10px;margin:10px 0;word-break:break-all}
+  .lin{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .chip{font:12px ui-monospace,monospace;background:#eef2f7;border:1px solid var(--line);border-radius:6px;padding:2px 8px}.chip.self{background:rgba(31,123,184,.12);border-color:rgba(31,123,184,.3);color:var(--acc);font-weight:600}
+  .arr{color:var(--mut)}.muted{color:var(--mut)}
+  img.graph{max-width:100%;border:1px solid var(--line);border-radius:10px;display:block}
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:var(--mut);font-size:11.5px}
+</style></head><body><div class="wrap">
+  <header><div><h1>CauseGraph report</h1><div class="sub">${esc(db)} · generated ${esc(gen)}</div></div><span class="badge">${esc(when)}</span></header>
+  <p class="summary">${esc(s.text)}</p>
+  <h2>Top processes by CPU</h2>
+  <table><thead><tr><th>Process</th><th class="n">PID</th><th class="n">CPU</th><th class="n">Memory</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">Nothing running.</td></tr>'}</tbody></table>
+  <h2>Incidents (${incidentList.length})</h2>
+  <ul class="inc">${incHtml}</ul>
+  ${focusHtml}
+  ${img}
+  <footer>Generated locally by CauseGraph. This file is self-contained and contains no external references — it opens offline anywhere. It reflects the capture at the moment shown above, not live data.</footer>
+</div></body></html>`;
+}
+function exportReport() {
+  try {
+    const html = buildReport();
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `causegraph-report-${reportStamp()}.html`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast("Report exported", "ok");
+  } catch (e) { toast("Couldn't build the report", "err"); }
+}
+$("exportBtn").addEventListener("click", exportReport);
 function showFile(n) {
   $("s-name").textContent = base(n.path); $("s-path").className = "sel-path"; $("s-path").textContent = n.path || "";
   const conf = (graphData.edges.find((e) => e.rule === "file_watch" && e.source === n.id) || {}).conf;
