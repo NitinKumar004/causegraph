@@ -322,12 +322,13 @@
     }
 
     /* ===================== toast (snack) ===================== */
-    #snack { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
-      z-index: 40; max-width: 80vw; padding: 11px 16px; border-radius: 10px; font-size: 13px;
+    /* toast — top-right so it's clearly visible and above the drawers (z 50) it reports on */
+    #snack { position: fixed; right: 20px; top: 62px; transform: translateY(-12px);
+      z-index: 60; max-width: min(360px, 80vw); padding: 11px 16px; border-radius: 10px; font-size: 13px;
       background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2);
       box-shadow: 0 12px 30px rgba(0,0,0,.55); opacity: 0; pointer-events: none;
       transition: opacity .18s ease, transform .18s ease; }
-    #snack.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #snack.show { opacity: 1; transform: translateY(0); }
     #snack.ok { border-color: rgba(125,211,252,.45); }
     #snack.err { border-color: rgba(255,107,107,.5); color: #ffd9d7; background: rgba(239,107,102,.14); }
 

@@ -94,6 +94,11 @@ def test_kill_endpoint_is_guarded(filewatch_db):
         assert post("/api/kill?pid=1") == 403                              # missing header
         assert post("/api/kill", {"X-CauseGraph": "1"}) == 400             # missing pid
         assert post("/api/kill?pid=2147480000", {"X-CauseGraph": "1"}) == 404  # no such process
+        # pid <= 1 is refused up front: os.kill(-1) signals every reachable process,
+        # os.kill(0) the whole process group — never something the UI can intend.
+        assert post("/api/kill?pid=-1", {"X-CauseGraph": "1"}) == 400
+        assert post("/api/kill?pid=0", {"X-CauseGraph": "1"}) == 400
+        assert post("/api/kill?pid=1", {"X-CauseGraph": "1"}) == 400
     finally:
         httpd.shutdown(); t.join(timeout=2)
 

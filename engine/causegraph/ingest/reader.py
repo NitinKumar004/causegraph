@@ -86,6 +86,17 @@ def max_seq(db_path: str) -> int:
         conn.close()
 
 
+def min_seq(db_path: str) -> int:
+    """Lowest seq still in the store (0 if empty) — a cheap indexed lookup. Rises when a
+    ring-buffer (-max-rows) trims the oldest rows, so a cache can drop what was deleted."""
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute("SELECT MIN(seq) FROM events").fetchone()
+        return row[0] or 0
+    finally:
+        conn.close()
+
+
 def schema_version(db_path: str) -> str | None:
     conn = sqlite3.connect(db_path)
     try:

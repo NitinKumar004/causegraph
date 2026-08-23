@@ -21,8 +21,9 @@ from causegraph.ingest import reader
 # build+annotate is only ~0.8s). So we keep the parsed events in memory and read only NEW
 # rows (seq > last) each request, then rebuild+annotate from memory. First request pays the
 # full parse; every one after reads a tiny delta — fast even while the recorder writes.
-_CACHE: dict = {"path": None, "events": None, "last_seq": 0, "g": None}
-_CACHE_LOCK = threading.Lock()
+_CACHE: dict = {"path": None, "events": None, "last_seq": 0, "min_seq": 0, "g": None}
+_CACHE_LOCK = threading.Lock()   # guards the _CACHE / _ASOF dicts (fast; never held during a rebuild)
+_BUILD_LOCK = threading.Lock()   # serializes the expensive read+rebuild so requests don't stampede
 
 
 def _rebuild(events):
@@ -33,23 +34,39 @@ def _rebuild(events):
 
 def _load(db):
     """(events, annotated graph) for db. Incremental: reuse the in-memory events and append
-    only rows written since the last read; full reload if the DB was reset/replaced."""
+    only rows written since the last read; full reload if the DB was reset/replaced; trim the
+    oldest rows a ring buffer (-max-rows) has deleted so the cache stays bounded.
+
+    The expensive read+rebuild runs WITHOUT the cache lock (only _BUILD_LOCK, which serializes
+    builders so they don't stampede); the cache lock is taken only briefly to read/publish the
+    dict. The events list is never mutated in place — each build publishes a fresh list — so a
+    reader iterating a returned list can never see it change size mid-pass."""
     ab = os.path.abspath(db)
-    with _CACHE_LOCK:
-        top = reader.max_seq(db)  # cheap indexed MAX(seq); also detects reset (seq restarts)
-        fresh = _CACHE["path"] != ab or top < _CACHE["last_seq"]
-        if fresh:
+    top = reader.max_seq(db)  # cheap indexed MAX(seq)
+    with _CACHE_LOCK:  # hot path: nothing new -> return the built graph without touching the DB again
+        if _CACHE["path"] == ab and top == _CACHE["last_seq"] and _CACHE["g"] is not None:
+            return _CACHE["events"], _CACHE["g"]
+    with _BUILD_LOCK:  # only builders contend here; cheap cache hits above never reach it
+        top = reader.max_seq(db)          # re-read now that we hold the build lock
+        low = reader.min_seq(db)          # rises when a ring buffer trims the oldest rows
+        with _CACHE_LOCK:
+            if _CACHE["path"] == ab and top == _CACHE["last_seq"] and _CACHE["g"] is not None:
+                return _CACHE["events"], _CACHE["g"]  # another builder just published it
+            c_path, c_seq, c_min, c_events = _CACHE["path"], _CACHE["last_seq"], _CACHE["min_seq"], _CACHE["events"]
+        reset = c_path != ab or top < c_seq or c_events is None
+        if reset:
             events = list(reader.read_events(db))
-            g = _rebuild(events)
-            _CACHE.update(path=ab, events=events, last_seq=top, g=g)
+        else:
+            events = list(c_events)  # copy; never mutate the shared list other threads may hold
+            if low > c_min:          # ring buffer deleted [c_min, low): drop that contiguous front
+                del events[: low - c_min]
+            events.extend(e for _, e in reader.read_events_since(db, c_seq))
+        g = _rebuild(events)  # slow, but no cache lock held — other requests keep serving from cache
+        with _CACHE_LOCK:
+            _CACHE.update(path=ab, events=events, last_seq=top, min_seq=low, g=g)
+            if reset:  # a fresh capture invalidates any cached time-travel slice at the old path
+                _ASOF.update(path=None, as_of=None, events=None, g=None)
             return events, g
-        if top == _CACHE["last_seq"]:
-            return _CACHE["events"], _CACHE["g"]  # nothing new — reuse the built graph
-        delta = list(reader.read_events_since(db, _CACHE["last_seq"]))
-        _CACHE["events"].extend(e for _, e in delta)
-        _CACHE["last_seq"] = top
-        _CACHE["g"] = _rebuild(_CACHE["events"])
-        return _CACHE["events"], _CACHE["g"]
 
 
 def _latest_ts(db: str):
@@ -426,6 +443,11 @@ def make_handler(db: str):
                 pid = int(parse_qs(parsed.query)["pid"][0])
             except (KeyError, ValueError, IndexError):
                 return self._json(400, {"error": "pid required"})
+            # Only ever a single, specific process. Reject pid <= 0: os.kill(-1) would signal
+            # every process the user can reach and os.kill(0) the whole process group (this
+            # server included) — a foot-gun the UI can never intend.
+            if pid <= 1:
+                return self._json(400, {"error": "refusing to kill pid <= 1"})
             try:
                 os.kill(pid, signal.SIGKILL)
                 return self._json(200, {"ok": True, "pid": pid})

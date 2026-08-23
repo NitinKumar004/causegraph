@@ -64,6 +64,63 @@ def test_as_of_excludes_later_events(tmp_path):
     assert 10 in pids and 20 not in pids  # pid 20 spawned at 200 > as_of 150
 
 
+def test_incremental_cache_trims_ring_buffer(tmp_path):
+    """A ring buffer (-max-rows) deletes the oldest rows; the incremental cache must drop
+    them too, so a long-departed process no longer shows up and memory stays bounded."""
+    import sqlite3
+    from causegraph.api import server
+    from causegraph.ingest import reader
+    p = _db(tmp_path, [_spawn(1, 0, 5), _spawn(100, 1, 10), _spawn(200, 1, 20)], "ring.db")
+    server._CACHE.update(path=None, events=None, last_seq=0, min_seq=0, g=None)  # isolate from other tests
+    events, _ = server._load(p)
+    assert {e.actor.pid for e in events if e.kind == "process.spawn"} == {1, 100, 200}
+    # the daemon's ring buffer trims the two oldest rows, then writes a new one
+    conn = sqlite3.connect(p)
+    conn.execute("DELETE FROM events WHERE seq <= 2"); conn.commit(); conn.close()
+    reader.write_events(sqlite3.connect(p), [_spawn(300, 1, 30)])
+    events2, _ = server._load(p)
+    pids = {e.actor.pid for e in events2 if e.kind == "process.spawn"}
+    assert 1 not in pids and 100 not in pids   # trimmed rows dropped from the cache
+    assert 200 in pids and 300 in pids         # survivor + new row kept
+    server._CACHE.update(path=None, events=None, last_seq=0, min_seq=0, g=None)
+
+
+def test_concurrent_load_and_read_do_not_crash(tmp_path):
+    """ThreadingHTTPServer serves requests concurrently. Readers iterating the events list
+    must never see it change size mid-pass while another thread appends new rows."""
+    import sqlite3, threading
+    from causegraph.api import server
+    from causegraph.ingest import reader
+    p = _db(tmp_path, [_spawn(1, 0, 5)] + [_spawn(1000 + i, 1, 10 + i) for i in range(200)], "conc.db")
+    server._CACHE.update(path=None, events=None, last_seq=0, min_seq=0, g=None)
+    server._load(p)
+    errors = []
+    stop = threading.Event()
+
+    def writer():
+        n = 0
+        while not stop.is_set() and n < 60:
+            reader.write_events(sqlite3.connect(p), [_spawn(5000 + n, 1, 400 + n)])
+            server._load(p)  # advances the cache (extends -> rebinds the list)
+            n += 1
+
+    def reader_loop():
+        try:
+            for _ in range(400):
+                evs, _ = server._load(p)
+                total = sum(1 for e in evs if e.kind == "process.spawn")  # full pass over the returned list
+                assert total >= 201
+        except Exception as e:  # a "list changed size during iteration" would land here
+            errors.append(e)
+
+    ts = [threading.Thread(target=writer)] + [threading.Thread(target=reader_loop) for _ in range(4)]
+    for t in ts: t.start()
+    for t in ts[1:]: t.join()
+    stop.set(); ts[0].join()
+    assert not errors, errors
+    server._CACHE.update(path=None, events=None, last_seq=0, min_seq=0, g=None)
+
+
 def test_pid_payload_shape_and_file_cause(filewatch_db):
     p = graph_payload(filewatch_db, pid=900)
     ids = {n["id"] for n in p["nodes"]}

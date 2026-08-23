@@ -49,6 +49,7 @@ let currentPid = null;   // the pid whose family the graph currently shows (for 
 let expanded = false;    // whether the current family view is the widened ("show more") one
 let asOf = null;         // timeline: view the machine as of this ts (ns); null = live/now
 let tlMin = null, tlMax = null;  // capture window (ns) the timeline scrubber spans
+let hideHelp = () => {};  // set by the help system; dismisses the popover (called before re-renders)
 // auto-refresh: re-poll the DB on a timer, paused while the user is interacting so
 // the view never yanks. autoMs = 0 means off. Cycled via the header "live" button.
 const AUTO_STEPS = [4000, 8000, 15000, 0];  // 4s -> 8s -> 15s -> off -> (loops)
@@ -295,6 +296,7 @@ function wireInspector(n) {
   $("kill").onclick = () => killPid(n.pid, base(n.exe));
 }
 async function selectNode(id) {
+  const changed = selectedId !== id;
   selectedId = id;
   for (const k in cards) cards[k].classList.toggle("sel", k === id);
   const n = nodeById[id] || allProcs.find((p) => p.id === id);
@@ -303,11 +305,16 @@ async function selectNode(id) {
   if (n.kind !== "process") { showFile(n); return; }
   $("s-name").textContent = base(n.exe);
   $("s-path").className = "sel-path"; $("s-path").textContent = n.exe || "";
-  $("s-body").innerHTML = inspectorBody(n, null);  // instant; the trend graphs fill in on fetch
-  wireInspector(n);
+  // Only paint the "loading…" placeholder on a fresh selection. On a live-poll re-select of the
+  // SAME process, keep the current graphs on screen until the fetch resolves — no 4s flicker.
+  if (changed || !$("s-body").querySelector(".sparkwrap")) {
+    hideHelp();  // the help "i" markers inside are about to be replaced
+    $("s-body").innerHTML = inspectorBody(n, null);
+    wireInspector(n);
+  }
   try {
     const d = await (await fetch(asq(`/api/proc?pid=${n.pid}`))).json();
-    if (!d.error && selectedId === id) { $("s-body").innerHTML = inspectorBody(n, d); wireInspector(n); }
+    if (!d.error && selectedId === id) { hideHelp(); $("s-body").innerHTML = inspectorBody(n, d); wireInspector(n); }
   } catch (_) { /* keep the instant view */ }
 }
 
@@ -400,19 +407,23 @@ function inspectHTML(n, d) {
       ? causes.map((c) => `<div class="cause"><span class="fpath">${esc(c.path)}</span><span class="conf">${c.conf != null ? "conf " + c.conf.toFixed(2) : ""}</span></div>`).join("")
       : '<div style="color:var(--muted);font-size:12.5px">no file cause captured</div>'}`;
 }
+let inspectPid = null;  // which process the Inspect drawer currently shows (guards stale fetches)
 async function openInspect(n) {
+  inspectPid = n.pid;
   $("modal").classList.add("show");
   $("sheet").innerHTML = inspectHTML(n, null);   // instant render; resources fill in
   $("sheet").querySelector(".x").onclick = closeInspect;
   try {
     const d = await (await fetch(asq(`/api/proc?pid=${n.pid}`))).json();
-    if (!d.error && $("modal").classList.contains("show")) {
+    // refill only if the drawer is still open AND still showing THIS process — a slower fetch
+    // for a previously-inspected process must not overwrite the one now on screen.
+    if (!d.error && $("modal").classList.contains("show") && inspectPid === n.pid) {
       $("sheet").innerHTML = inspectHTML(n, d);
       $("sheet").querySelector(".x").onclick = closeInspect;
     }
   } catch (_) { /* keep the instant view */ }
 }
-function closeInspect() { $("modal").classList.remove("show"); }
+function closeInspect() { inspectPid = null; hideHelp(); $("modal").classList.remove("show"); }
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeInspect(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeInspect(); closeIncidents(); } });
 
@@ -618,18 +629,22 @@ function appRollups() {
   for (const n of allProcs.filter(alive)) { const k = appOf(n.exe); const e = g[k] || (g[k] = { cpu: 0, mem: 0 }); e.cpu += curCpu(n); e.mem += mib(curMem(n)); }
   return g;
 }
-function evaluateAlerts() {
+// prime=true just arms the active flags to the current state without firing — used on the
+// first evaluation after (re)load, so a rule that's ALREADY above its threshold doesn't fire
+// a spurious alert on every page reload (it fires only on a fresh rising edge afterwards).
+function evaluateAlerts(prime) {
   if (!alertRules.length || asOf != null) return;  // don't fire on rewound/past data
   const roll = appRollups();
   for (const r of alertRules) {
     const entries = r.app ? (roll[r.app] ? [[r.app, roll[r.app]]] : []) : Object.entries(roll);
     let hit = null;  // the highest-crossing app for this rule
     for (const [app, e] of entries) { const v = r.metric === "cpu" ? e.cpu : e.mem; if (v >= r.value && (!hit || v > hit.v)) hit = { app, v }; }
-    if (hit && !r.active) {  // rising edge -> fire once
+    if (hit && !r.active) {  // rising edge -> fire once (unless we're just priming)
       r.active = true;
+      if (prime) continue;
       const val = r.metric === "cpu" ? `${hit.v.toFixed(0)}%` : `${humanBytes(hit.v * 1048576)}`;
       const text = `${hit.app} — ${r.metric === "cpu" ? "CPU" : "memory"} ${val} (≥ ${r.value}${alUnit(r.metric)})`;
-      alertLog.unshift({ t: fmtClock((lastTs != null ? lastTs : Date.now() * 1e6)), text });
+      alertLog.unshift({ t: fmtClock((lastTs != null ? lastTs : 0)), text });
       if (alertLog.length > 30) alertLog.pop();
       toast(`⚠ ${text}`);
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
@@ -665,8 +680,22 @@ function alertsSectionHTML() {
     ${rules}${log}${notif}</div>`;
 }
 function renderAlerts(sheet) {
+  // Preserve a half-typed watch across a re-render (e.g. an unrelated alert fires while the user
+  // is typing a threshold): capture the add-watch inputs + focus, restore them after rebuild.
+  const prev = sheet.querySelector(".al-sec") ? {
+    metric: sheet.querySelector("#al-metric") && sheet.querySelector("#al-metric").value,
+    value: sheet.querySelector("#al-value") && sheet.querySelector("#al-value").value,
+    app: sheet.querySelector("#al-app") && sheet.querySelector("#al-app").value,
+    focus: document.activeElement && document.activeElement.closest(".al-add") ? document.activeElement.id : null,
+  } : null;
   let host = sheet.querySelector(".al-sec");
   if (host) { host.outerHTML = alertsSectionHTML(); } else { sheet.insertAdjacentHTML("beforeend", alertsSectionHTML()); }
+  if (prev) {
+    if (prev.metric != null && sheet.querySelector("#al-metric")) sheet.querySelector("#al-metric").value = prev.metric;
+    if (prev.value != null && sheet.querySelector("#al-value")) sheet.querySelector("#al-value").value = prev.value;
+    if (prev.app != null && sheet.querySelector("#al-app")) sheet.querySelector("#al-app").value = prev.app;
+    if (prev.focus && sheet.querySelector("#" + prev.focus)) { const el = sheet.querySelector("#" + prev.focus); el.focus(); if (el.setSelectionRange) try { el.setSelectionRange(el.value.length, el.value.length); } catch (_) {} }
+  }
   wireAlerts(sheet);
 }
 function wireAlerts(sheet) {
@@ -761,7 +790,7 @@ async function loadAll() {
   renderList();
   fetchIncidents();  // lazy, non-blocking — fills the header badge after first paint
   fetchWindow();     // populate the timeline scrubber range
-  evaluateAlerts();  // check watches against the first read
+  evaluateAlerts(true);  // prime watches to current state (no spurious fire on reload)
   const live = allProcs.filter(alive);
   if (!allProcs.length) { emptyState("Nothing captured yet", "The recorder hasn't written any events. Start it with <code>cg up</code> — then this fills in within a few seconds."); return; }
   if (!live.length) { emptyState("Recorder looks stopped", "The capture has history but nothing was sampled recently — the recorder isn't writing. Restart it with <code>cg up</code>."); return; }
@@ -945,12 +974,14 @@ $("live").addEventListener("click", () => {
     pop.style.left = left + "px"; pop.style.top = Math.max(m, top) + "px";
   }
   function hide(el) { if (el && el !== cur) return; hideT = setTimeout(() => { pop.classList.remove("show"); cur = null; }, 60); }
+  hideHelp = () => { clearTimeout(hideT); pop.classList.remove("show"); cur = null; };  // hide now (on re-render)
   const near = (e) => (e.target.closest ? e.target.closest("[data-help]") : null);
   document.addEventListener("mouseover", (e) => { const el = near(e); if (el) show(el); });
   document.addEventListener("mouseout", (e) => { const el = near(e); if (el) hide(el); });
   document.addEventListener("focusin", (e) => { const el = near(e); if (el) show(el); });
   document.addEventListener("focusout", (e) => { const el = near(e); if (el) hide(el); });
-  window.addEventListener("scroll", () => pop.classList.remove("show"), true);
+  document.addEventListener("click", (e) => { if (!near(e)) hideHelp(); });  // any real click dismisses it
+  window.addEventListener("scroll", () => hideHelp(), true);
 })();
 
 loadAll();
