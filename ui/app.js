@@ -2,7 +2,9 @@
    node is an HTML card. The engine does the reasoning; this only presents it. */
 "use strict";
 const $ = (id) => document.getElementById(id);
-const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])));
+// Escapes for HTML text AND attribute contexts (single quote + backtick included, so a value
+// dropped into a single-quoted or templated attribute can't break out).
+const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"'`]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c])));
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "?";
 // Append the timeline position (as_of, ns) to any API URL when rewound; no-op when live.
 const asq = (url) => (asOf == null ? url : url + (url.includes("?") ? "&" : "?") + "as_of=" + asOf);
@@ -195,7 +197,7 @@ const bySort = (getCpu, getMem, getName) => (a, b) =>
 // The one-line machine summary, as data: {tone, top:[[app,cpu]...], text}. Shared by the
 // header status line and the exported report so both tell the same story.
 function statusSummary() {
-  const groups = {};
+  const groups = Object.create(null);  // null proto: an app literally named "__proto__" can't poison Object.prototype
   for (const n of allProcs.filter(alive)) { const k = appOf(n.exe); (groups[k] = groups[k] || { cpu: 0 }).cpu += curCpu(n); }
   const top = Object.entries(groups).sort((a, b) => b[1].cpu - a[1].cpu).filter(([, g]) => g.cpu >= 5).slice(0, 2);
   if (!top.length) return { tone: "quiet", top: [], text: "Quiet — nothing's working hard right now." };
@@ -240,7 +242,7 @@ function renderProcRows(el, rows) {
 }
 
 function renderAppRows(el, rows) {
-  const groups = {};  // app -> {cpu, mem, procs[]}
+  const groups = Object.create(null);  // app -> {cpu, mem, procs[]}; null proto (see statusSummary)
   for (const n of rows) {
     const k = appOf(n.exe);
     const g = groups[k] || (groups[k] = { app: k, cpu: 0, mem: 0, procs: [] });
@@ -625,7 +627,7 @@ const alUnit = (m) => (m === "cpu" ? "%" : " MiB");
 const alLabel = (r) => `${r.metric === "cpu" ? "CPU" : "Memory"} ≥ ${r.value}${alUnit(r.metric)}`;
 // Roll up alive processes by app -> {cpu total, mem MiB total}; the same grouping the list shows.
 function appRollups() {
-  const g = {};
+  const g = Object.create(null);  // null proto (see statusSummary)
   for (const n of allProcs.filter(alive)) { const k = appOf(n.exe); const e = g[k] || (g[k] = { cpu: 0, mem: 0 }); e.cpu += curCpu(n); e.mem += mib(curMem(n)); }
   return g;
 }

@@ -6,6 +6,7 @@ from the query string), so a client can never point the API at an arbitrary file
 from __future__ import annotations
 
 import json
+import math
 import os
 import signal
 import sqlite3
@@ -374,6 +375,19 @@ def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES,
 
 _CONTENT_TYPE = {".html": "text/html", ".js": "text/javascript"}
 _STATIC = {"/": "index.html", "/app.js": "app.js", "/vendor/cytoscape.min.js": "vendor/cytoscape.min.js"}
+_LOOPBACK_HOSTS = {"", "127.0.0.1", "localhost", "::1"}  # the only Host values a loopback server should answer
+
+
+def _finite(o):
+    """Recursively replace non-finite floats (NaN/Infinity) with None so json.dumps can never
+    emit the bare NaN/Infinity tokens that are invalid JSON and would break the UI's JSON.parse."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_finite(v) for v in o]
+    return o
 
 
 def make_handler(db: str):
@@ -388,7 +402,16 @@ def make_handler(db: str):
             self.end_headers()
             self.wfile.write(body)
 
+        def _host_ok(self):
+            # DNS-rebinding defense: a remote page that rebinds its domain to 127.0.0.1 still
+            # sends its OWN domain in the Host header (the browser sets it from the URL), so
+            # only loopback host names pass. This closes the same-origin bypass of the kill guard.
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+            return host in _LOOPBACK_HOSTS
+
         def do_GET(self):
+            if not self._host_ok():
+                return self._send(403, b"forbidden host", "text/plain")
             parsed = urlparse(self.path)
             path = parsed.path
             if path in _STATIC:
@@ -430,10 +453,12 @@ def make_handler(db: str):
             return self._send(404, b"not found", "text/plain")
 
         def do_POST(self):
-            # The only mutation route. Guarded two ways: the server binds 127.0.0.1
-            # only, and a custom header is required — a cross-origin page in the
-            # user's browser cannot set it (it triggers a CORS preflight this server
+            # The only mutation route. Guarded three ways: the server binds 127.0.0.1 only, the
+            # Host must be loopback (blocks DNS rebinding — see _host_ok), and a custom header is
+            # required — a cross-origin page can't set it (it triggers a CORS preflight this server
             # never approves), which blocks drive-by CSRF against localhost.
+            if not self._host_ok():
+                return self._json(403, {"error": "forbidden host"})
             if self.headers.get("X-CauseGraph") != "1":
                 return self._json(403, {"error": "forbidden"})
             parsed = urlparse(self.path)
@@ -455,6 +480,8 @@ def make_handler(db: str):
                 return self._json(404, {"error": f"no process {pid}"})
             except PermissionError:
                 return self._json(403, {"error": f"not permitted to kill {pid}"})
+            except OverflowError:  # a pid too large for the OS's pid_t — not a real process
+                return self._json(400, {"error": "invalid pid"})
             except OSError as e:
                 return self._json(500, {"error": str(e)})
 
@@ -487,7 +514,13 @@ def make_handler(db: str):
             return self._json(status, payload)
 
         def _json(self, status, obj):
-            self._send(status, json.dumps(obj).encode(), "application/json")
+            # allow_nan=False so a stray NaN/Infinity can never emit invalid JSON; if one is
+            # present, sanitize it to null (a valid body) rather than 500 or corrupt the response.
+            try:
+                body = json.dumps(obj, allow_nan=False)
+            except ValueError:
+                body = json.dumps(_finite(obj), allow_nan=False)
+            self._send(status, body.encode(), "application/json")
 
     return Handler
 
