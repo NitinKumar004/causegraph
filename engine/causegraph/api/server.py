@@ -70,6 +70,7 @@ _UI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))), "ui")
 
 DEFAULT_MAX_NODES = 500
+HOT = 90.0  # CPU% at/above which a process is "hot" (matches the UI) — the incident threshold
 
 
 # ---- payload (pure, no HTTP) ----
@@ -176,11 +177,11 @@ def _family_payload(g, culprit, min_confidence, max_nodes, expand=False) -> dict
     return p
 
 
-def proc_detail(db, pid, max_series=90) -> dict:
+def proc_detail(db, pid, max_series=90, as_of=None) -> dict:
     """Rich detail for one process instance, for the Inspect view: lifecycle status,
     CPU/RSS now/peak/avg, a resource sample SERIES (for a sparkline), and children it
     spawned. Read-only over the captured events — no live OS query."""
-    events, g = _load(db)
+    events, g = _view(db, as_of)
     key = traverse.latest_instance(g, pid)
     if key is None:
         return {"error": f"no process with pid {pid} in the capture window"}
@@ -207,12 +208,103 @@ def proc_detail(db, pid, max_series=90) -> dict:
     }
 
 
-def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False, expand=False) -> dict:
+# ---- time-travel: view the machine "as of" a past timestamp ----
+_ASOF: dict = {"path": None, "as_of": None, "events": None, "g": None}
+
+
+def _view(db, as_of=None):
+    """(events, annotated graph) as of a timestamp — events with ts <= as_of, so the UI
+    can rewind. as_of=None is now (the incremental-cached full build). The last as_of build
+    is cached so scrubbing at one position doesn't rebuild each request."""
+    events, g = _load(db)
+    if as_of is None:
+        return events, g
+    ab = os.path.abspath(db)
+    with _CACHE_LOCK:
+        if _ASOF["path"] == ab and _ASOF["as_of"] == as_of and _ASOF["events"] is not None:
+            return _ASOF["events"], _ASOF["g"]
+        ev = [e for e in events if e.ts <= as_of]   # append-only ts, so a past slice is stable
+        gg = _rebuild(ev)
+        _ASOF.update(path=ab, as_of=as_of, events=ev, g=gg)
+        return ev, gg
+
+
+def window(db) -> dict:
+    """[min_ts, max_ts] of the capture — the range for the timeline scrubber."""
+    conn = sqlite3.connect(db)
+    try:
+        lo, hi = conn.execute("SELECT MIN(ts), MAX(ts) FROM events").fetchone()
+    except sqlite3.Error:
+        lo = hi = None
+    finally:
+        conn.close()
+    return {"min_ts": lo, "max_ts": hi}
+
+
+def incidents(db, as_of=None, limit=15) -> dict:
+    """Auto-detected notable moments as plain-English cards (no model): CPU spikes,
+    memory growth (leaks), and crash-loops. One pass over the (cached) events + graph."""
+    events, g = _view(db, as_of)
+    stat = {}  # pid -> rolling per-process resource stats
+    for e in events:
+        if e.kind != "resource.sample" or e.metrics is None:
+            continue
+        s = stat.get(e.actor.pid)
+        if s is None:
+            s = stat[e.actor.pid] = {"exe": e.actor.exe, "n": 0, "max_cpu": 0.0, "hot": 0,
+                                     "first_rss": None, "first_ts": None, "last_rss": None, "last_ts": None}
+        s["n"] += 1
+        c, r = e.metrics.cpu_pct, e.metrics.rss_bytes
+        if c is not None:
+            s["max_cpu"] = max(s["max_cpu"], c)
+            if c >= HOT:
+                s["hot"] += 1
+        if r is not None:
+            if s["first_ts"] is None or e.ts < s["first_ts"]:
+                s["first_rss"], s["first_ts"] = r, e.ts
+            if s["last_ts"] is None or e.ts > s["last_ts"]:
+                s["last_rss"], s["last_ts"] = r, e.ts
+    out = []
+    for pid, s in stat.items():
+        nm = os.path.basename(s["exe"] or "?") or "?"
+        if s["max_cpu"] >= HOT:
+            out.append({"kind": "cpu", "severity": s["max_cpu"], "pid": pid, "exe": s["exe"],
+                        "title": f"{nm} hit {s['max_cpu']:.0f}% CPU",
+                        "detail": f"pid {pid} · sustained high CPU across {s['hot']} samples"})
+        fr, lr = s["first_rss"], s["last_rss"]
+        if fr and lr and s["n"] >= 8 and lr >= 1.6 * fr and (lr - fr) >= 64 * 1024 * 1024:
+            out.append({"kind": "leak", "severity": (lr - fr) / 1e6, "pid": pid, "exe": s["exe"],
+                        "title": f"{nm} memory grew",
+                        "detail": f"pid {pid} · {_mib(fr)} → {_mib(lr)} over the capture (possible leak)"})
+    # crash-loop: many SHORT-LIVED instances of one exe (not long-running worker pools)
+    from collections import Counter
+    loops = Counter()
+    for k in g.nodes():
+        if not is_process_key(k):
+            continue
+        n = g.nodes[k]
+        if n.get("observed_spawn") and n.get("exit_ts") and (n["exit_ts"] - n["spawn_ts"]) < 5_000_000_000:
+            loops[n["exe"]] += 1
+    for exe, cnt in loops.items():
+        if cnt >= 5:
+            nm = os.path.basename(exe or "?") or "?"
+            out.append({"kind": "crashloop", "severity": 1000 + cnt, "pid": None, "exe": exe,
+                        "title": f"{nm} respawned {cnt}×",
+                        "detail": f"{cnt} short-lived instances · possible crash loop or churn"})
+    out.sort(key=lambda i: -i["severity"])
+    return {"incidents": out[:limit], "total": len(out)}
+
+
+def _mib(n):
+    return f"{n / (1024 * 1024):.0f} MiB"
+
+
+def graph_payload(db, pid=None, min_confidence=0.5, max_nodes=DEFAULT_MAX_NODES, show_all=False, family=False, expand=False, as_of=None) -> dict:
     """Return the bounded causal neighborhood of a culprit as {nodes, edges,
     truncated}, or {"error": msg}. With show_all, return the whole process tree.
     Bound (max_nodes) prevents serializing an unbounded graph."""
     max_nodes = max(1, int(max_nodes))  # a payload always has at least the culprit; avoids anc[-0:]
-    events, g = _load(db)
+    events, g = _view(db, as_of)
 
     if show_all:
         return _all_payload(g, max_nodes)
@@ -296,13 +388,26 @@ def make_handler(db: str):
                 qs = parse_qs(parsed.query)
                 try:
                     pid = int(qs["pid"][0])
+                    as_of = int(qs["as_of"][0]) if "as_of" in qs else None
                 except (KeyError, ValueError, IndexError):
-                    return self._json(400, {"error": "pid required"})
+                    return self._json(400, {"error": "pid required (int); as_of int"})
                 try:
-                    payload = proc_detail(db, pid)
+                    payload = proc_detail(db, pid, as_of=as_of)
                 except Exception:
                     return self._json(500, {"error": "could not read the events database"})
                 return self._json(400 if "error" in payload else 200, payload)
+            if path == "/api/incidents":
+                qs = parse_qs(parsed.query)
+                try:
+                    as_of = int(qs["as_of"][0]) if "as_of" in qs else None
+                except (ValueError, IndexError):
+                    return self._json(400, {"error": "as_of must be an integer"})
+                try:
+                    return self._json(200, incidents(db, as_of=as_of))
+                except Exception:
+                    return self._json(500, {"error": "could not read the events database"})
+            if path == "/api/window":
+                return self._json(200, window(db))
             if path == "/api/meta":
                 return self._json(200, {"db": os.path.basename(db), "latest_ts": _latest_ts(db)})
             return self._send(404, b"not found", "text/plain")
@@ -346,8 +451,10 @@ def make_handler(db: str):
                     kw["min_confidence"] = float(qs["min_confidence"][0])
                 if "max_nodes" in qs:
                     kw["max_nodes"] = int(qs["max_nodes"][0])
+                if "as_of" in qs:
+                    kw["as_of"] = int(qs["as_of"][0])
             except ValueError:
-                return self._json(400, {"error": "pid/max_nodes must be integers, min_confidence a float"})
+                return self._json(400, {"error": "pid/max_nodes/as_of must be integers, min_confidence a float"})
             try:
                 payload = graph_payload(db, **kw)
             except Exception:

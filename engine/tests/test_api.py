@@ -26,6 +26,44 @@ def _fc(path, ts):
         "target": {"path": path}, "source": "fsnotify", "confidence": 1.0})
 
 
+def _sample(pid, ts, cpu=None, rss=None, exe="/x"):
+    m = {}
+    if cpu is not None: m["cpu_pct"] = cpu
+    if rss is not None: m["rss_bytes"] = rss
+    return Event.from_dict({"id": f"r{pid}-{ts}", "ts": ts, "host_id": "h", "kind": "resource.sample",
+        "actor": {"pid": pid, "ppid": 1, "exe": exe, "args": [], "user": "u"},
+        "metrics": m, "source": "poll", "confidence": 1.0})
+
+
+def _exit(pid, ppid, ts, exe="/x"):
+    return Event.from_dict({"id": f"x{pid}-{ts}", "ts": ts, "host_id": "h", "kind": "process.exit",
+        "actor": {"pid": pid, "ppid": ppid, "exe": exe, "args": [], "user": "u"},
+        "source": "poll", "confidence": 1.0})
+
+
+def test_incidents_cpu_leak_crashloop(tmp_path):
+    from causegraph.api.server import incidents
+    events = [_spawn(1, 0, 5)]
+    events += [_spawn(200, 1, 10)] + [_sample(200, 20 + i, cpu=95.0) for i in range(3)]       # CPU spike
+    events += [_spawn(300, 1, 29)] + [_sample(300, 30 + i, rss=(100 + 20 * i) * 1024 * 1024) for i in range(10)]  # leak
+    ts = 200
+    for i in range(6):  # crash-loop: 6 short-lived /flap instances
+        events += [_spawn(500 + i, 1, ts, exe="/flap"), _exit(500 + i, 1, ts + 1_000_000, exe="/flap")]
+        ts += 10
+    r = incidents(_db(tmp_path, events, "inc.db"))
+    kinds = {i["kind"] for i in r["incidents"]}
+    assert {"cpu", "leak", "crashloop"} <= kinds
+    loop = next(i for i in r["incidents"] if i["kind"] == "crashloop")
+    assert "6" in loop["title"]  # respawned 6×
+
+
+def test_as_of_excludes_later_events(tmp_path):
+    events = [_spawn(1, 0, 5), _spawn(10, 1, 100), _spawn(20, 1, 200)]
+    p = graph_payload(_db(tmp_path, events, "asof.db"), show_all=True, as_of=150)
+    pids = {n["pid"] for n in p["nodes"]}
+    assert 10 in pids and 20 not in pids  # pid 20 spawned at 200 > as_of 150
+
+
 def test_pid_payload_shape_and_file_cause(filewatch_db):
     p = graph_payload(filewatch_db, pid=900)
     ids = {n["id"] for n in p["nodes"]}

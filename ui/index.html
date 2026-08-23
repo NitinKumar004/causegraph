@@ -61,6 +61,21 @@
     .livebtn.on { color: var(--acc-2); border-color: rgba(125,211,252,.3); background: rgba(125,211,252,.08); }
     /* frozen = polling but the source stopped writing; amber, informational (not an error) */
     .livebtn.frozen { color: #e0b062; border-color: rgba(224,176,98,.32); background: rgba(224,176,98,.08); }
+    /* incidents header button + cards */
+    .incbtn { display: inline-flex; align-items: center; gap: 6px; font: 600 12px inherit; font-family: inherit; color: var(--text-2);
+      background: rgba(255,255,255,.04); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+    .incbtn:hover { color: var(--text); background: rgba(255,255,255,.08); }
+    .incbtn.has { color: #e0b062; border-color: rgba(224,176,98,.35); background: rgba(224,176,98,.08); }
+    .inc-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 11px; margin-top: 10px;
+      background: var(--card); border: 1px solid var(--line); cursor: pointer; transition: border-color .12s, background .12s; }
+    .inc-card:hover { border-color: var(--line-3); background: var(--card-2); }
+    .inc-card.static { cursor: default; }
+    .inc-ic { width: 30px; height: 30px; flex: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; font: 700 11px ui-monospace, monospace; }
+    .inc-ic.cpu { color: var(--hot); background: rgba(255,107,107,.12); border: 1px solid rgba(255,107,107,.3); }
+    .inc-ic.leak { color: #7dd3fc; background: rgba(125,211,252,.1); border: 1px solid rgba(125,211,252,.3); }
+    .inc-ic.crashloop { color: #e0b062; background: rgba(224,176,98,.1); border: 1px solid rgba(224,176,98,.3); }
+    .inc-card .t { font-weight: 620; font-size: 13.5px; color: #eef1f7; }
+    .inc-card .d { color: var(--muted); font-size: 12px; margin-top: 3px; }
     .dbchip b { color: var(--text); font-weight: 600; }
 
     /* ===================== body ===================== */
@@ -329,6 +344,10 @@
         </div>
       </div>
     </form>
+    <button id="incBtn" class="incbtn" title="Notable moments — spikes, leaks, crash-loops">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <span id="incCount">0</span>
+    </button>
     <button id="live" class="livebtn on" title="Auto-refresh — click to change interval">live · 4s</button>
     <div class="dbchip"><span class="dot"></span><b id="dbname">db</b><span id="hcount"></span></div>
   </header>
@@ -384,6 +403,7 @@
 
   <div id="snack"></div>
   <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+  <div class="modal" id="incidents-modal"><div class="sheet" id="incidents-sheet"></div></div>
   <div class="modal" id="confirm">
     <div class="confirm-card">
       <h3 id="confirm-title">Are you sure?</h3>

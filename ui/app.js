@@ -40,6 +40,7 @@ let filterCpu = 0, filterMem = 0, filterText = "";
 const nodeById = {};     // id -> node meta from the current graph
 let currentPid = null;   // the pid whose family the graph currently shows (for live refresh)
 let expanded = false;    // whether the current family view is the widened ("show more") one
+let asOf = null;         // timeline: view the machine as of this ts (ns); null = live/now
 // auto-refresh: re-poll the DB on a timer, paused while the user is interacting so
 // the view never yanks. autoMs = 0 means off. Cycled via the header "live" button.
 const AUTO_STEPS = [4000, 8000, 15000, 0];  // 4s -> 8s -> 15s -> off -> (loops)
@@ -396,7 +397,38 @@ async function openInspect(n) {
 }
 function closeInspect() { $("modal").classList.remove("show"); }
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeInspect(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInspect(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeInspect(); closeIncidents(); } });
+
+// ---- incident feed ----
+let incidentList = [];
+async function fetchIncidents() {
+  try {
+    const d = await (await fetch(`/api/incidents${asOf != null ? `?as_of=${asOf}` : ""}`)).json();
+    if (d.incidents) { incidentList = d.incidents; $("incCount").textContent = d.total; $("incBtn").classList.toggle("has", d.total > 0); }
+  } catch (_) {}
+}
+function openIncidents() {
+  const s = $("incidents-sheet");
+  const glyph = { cpu: "%", leak: "M", crashloop: "⟳" };
+  const cards = incidentList.length
+    ? incidentList.map((i) => `<div class="inc-card${i.pid == null ? " static" : ""}"${i.pid == null ? "" : ` data-pid="${i.pid}"`}>
+        <span class="inc-ic ${i.kind}">${glyph[i.kind] || "!"}</span>
+        <div style="min-width:0"><div class="t">${esc(i.title)}</div><div class="d">${esc(i.detail)}</div></div></div>`).join("")
+    : '<div style="color:var(--muted);font-size:13px;margin-top:12px">Nothing notable right now — no spikes, leaks, or crash-loops detected.</div>';
+  s.innerHTML = `<button class="x" aria-label="Close">×</button>
+    <div class="kick">Incidents</div>
+    <h3>Notable moments</h3>
+    <div class="path" style="margin-bottom:2px">Auto-detected from the capture — click one to jump to it.</div>
+    ${cards}`;
+  $("incidents-modal").classList.add("show");
+  s.querySelector(".x").onclick = closeIncidents;
+  s.querySelectorAll(".inc-card[data-pid]").forEach((el) => {
+    el.onclick = () => { closeIncidents(); focusPid(+el.getAttribute("data-pid")); ensurePanelOpen(); };
+  });
+}
+function closeIncidents() { $("incidents-modal").classList.remove("show"); }
+$("incBtn").addEventListener("click", openIncidents);
+$("incidents-modal").addEventListener("click", (e) => { if (e.target === $("incidents-modal")) closeIncidents(); });
 function showFile(n) {
   $("s-name").textContent = base(n.path); $("s-path").className = "sel-path"; $("s-path").textContent = n.path || "";
   const conf = (graphData.edges.find((e) => e.rule === "file_watch" && e.source === n.id) || {}).conf;
@@ -473,6 +505,7 @@ async function loadAll() {
   allProcs = (d.nodes || []).filter((n) => n.kind === "process");
   $("art-sub").textContent = `sqlite · ${allProcs.length} processes`;
   renderList();
+  fetchIncidents();  // lazy, non-blocking — fills the header badge after first paint
   const live = allProcs.filter(alive);
   if (!allProcs.length) { emptyState("Nothing captured yet", "The recorder hasn't written any events. Start it with <code>cg up</code> — then this fills in within a few seconds."); return; }
   if (!live.length) { emptyState("Recorder looks stopped", "The capture has history but nothing was sampled recently — the recorder isn't writing. Restart it with <code>cg up</code>."); return; }
@@ -586,6 +619,7 @@ async function refreshData() {
       if (rg.ok && !dg.error) applyGraphUpdate(dg);
     }
     try { noteTs((await (await fetch("/api/meta")).json()).latest_ts); } catch (_) {}
+    fetchIncidents();  // keep the badge current with the poll
   } catch (_) { /* transient; next tick retries */ }
   finally { refreshing = false; $("plist").scrollTop = sc; }
 }
