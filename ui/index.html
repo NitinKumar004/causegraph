@@ -335,6 +335,18 @@
     .modal { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
       background: rgba(0,0,0,.55); backdrop-filter: blur(3px); padding: 24px; }
     .modal.show { display: flex; }
+    /* right-side drawers (Incidents, Inspect) — overlay that slides in from the edge, so the
+       graph stays visible behind and it feels like a workspace, not a blocking popup. */
+    .modal.drawer { display: flex; justify-content: flex-end; align-items: stretch; padding: 0;
+      overflow: hidden; background: rgba(0,0,0,.42); backdrop-filter: blur(2px);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+    .modal.drawer.show { opacity: 1; pointer-events: auto; }
+    .modal.drawer .sheet { width: 480px; max-width: 100vw; height: 100%; max-height: none;
+      border-radius: 0; border: 0; border-left: 1px solid var(--line-2);
+      box-shadow: -26px 0 70px rgba(0,0,0,.5); padding: 24px 26px 32px;
+      transform: translateX(102%); transition: transform .28s cubic-bezier(.22,1,.36,1); }
+    .modal.drawer.show .sheet { transform: translateX(0); }
+    @media (prefers-reduced-motion: reduce) { .modal.drawer .sheet { transition: none; } }
     /* confirm dialog (our own, not the browser's) */
     .confirm-card { width: 400px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line-2);
       border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 22px 24px; }
@@ -480,8 +492,8 @@
   </div>
 
   <div id="snack"></div>
-  <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
-  <div class="modal" id="incidents-modal"><div class="sheet" id="incidents-sheet"></div></div>
+  <div class="modal drawer" id="modal"><div class="sheet" id="sheet"></div></div>
+  <div class="modal drawer" id="incidents-modal"><div class="sheet" id="incidents-sheet"></div></div>
   <div class="modal" id="confirm">
     <div class="confirm-card">
       <h3 id="confirm-title">Are you sure?</h3>
